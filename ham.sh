@@ -41,7 +41,8 @@ function ham
 	done
     fi
 }
-function transpose {
+function transpose
+{
     awk \
         '{ t[$1] = t[$1]; for (i=2; i<=NF; i++) t[$i] = t[$i]" "$1; } \
          END {for (v in t) print v""t[v]; }'
