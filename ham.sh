@@ -1,31 +1,32 @@
 #!/bin/bash
 function echoerr { echo "$@" 1>&2; }
-function ldebug {
+function debug {
 #    echoerr $@
     true
 }
 
 function ham
 {
-    set -e
     read VERTEX EDGES
-    #REST=$(mktemp -t ham)
-    #cat > ${REST}
+
     REST=$(cat)
-    ldebug V=${VERTEX} E='"'${EDGES}'"' $@ $(echo -e "${REST}" | tr '\n' ,)
+    debug V=${VERTEX} E='"'${EDGES}'"' $@ $(echo -e "${REST}" | tr '\n' ,)
 
     if [[ -n "${REST}" ]]; then
 	for i in ${EDGES}
 	do
 	    if [[ "${VERTEX}" != "$i" ]]; then
-		echo -e "${REST}" | sed -e "s/^$i /${VERTEX} /" | sed -e "s/ $i//" | prep $@:"${VERTEX}->$i" | sed -e "s/${VERTEX}/${VERTEX} $i/" #| head -n 1
+		echo -e "${REST}" | \
+                    sed -e "s/^$i /${VERTEX} /" | \
+                    sed -e "s/ $i//" | \
+                    prep $@:"${VERTEX}->$i" | \
+                    sed -e "s/${VERTEX}/${VERTEX} $i/"
 	    fi
 	done
     else
 	for i in ${EDGES}
 	do
 	    if [[ "${VERTEX}" = "$i" ]]; then
-#		echoerr V=${VERTEX} E='"'${EDGES}'"' $@ $(echo -e "${REST}" | tr '\n' ,)
 		echo $i
 	    else
 #		echoerr WTF? V=${VERTEX} E='"'${EDGES}'"'
@@ -35,12 +36,14 @@ function ham
     fi
 }
 function transpose {
-    awk '{ trans[$1] = trans[$1]; for (i=2; i<=NF; i++) trans[$i] = trans[$i]" "$1;} END {for (team in trans) print team""trans[team]; }'
+    awk \
+        '{ t[$1] = t[$1]; for (i=2; i<=NF; i++) t[$i] = t[$i]" "$1; } \
+         END {for (v in t) print v""t[v]; }'
 }
 
 function deg
 {
-    awk 'NR == 1 { print NF }' 
+    awk 'NR == 1 { print NF }'
 }
 
 function gsort
@@ -58,12 +61,12 @@ function prep
     GRAPH=$(gsort)
     TGRAPH=$(echo -e "${GRAPH}" | transpose | gsort)
     (if [[ $(echo -e "${GRAPH}" | deg) -le $(echo -e "${TGRAPH}"| deg) ]]; then
-	echo -e "${GRAPH}"| ham $@ 
+	echo -e "${GRAPH}"| ham $@
     else
 	echo -e "${TGRAPH}" | ham $@ | revwords
     fi)
 }
 
 
-prep "" #| head -n 1
-exit
+head -n 1 <(prep "")
+
