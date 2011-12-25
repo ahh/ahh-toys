@@ -1,4 +1,10 @@
 #!/bin/bash
+#
+# Takes input on STDIN.  Each line specifies the name of a vertex
+# (first word on the line) and the set of vertices it has edges to (remaining
+# words on the line.)
+#
+
 function echoerr { echo "$@" 1>&2; }
 function debug {
 #    echoerr $@
