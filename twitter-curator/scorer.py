@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import time
 
@@ -40,13 +41,21 @@ Respond ONLY with valid JSON, no preamble, no trailing text:
  "reasoning": "One sentence explaining the highest score and what specifically earns that rating."}"""
 
 
+def _twitter_prompt() -> str:
+    return os.environ.get("TWITTER_SCORING_PROMPT") or SYSTEM_PROMPT
+
+
+def _reddit_prompt() -> str:
+    return os.environ.get("REDDIT_SCORING_PROMPT") or REDDIT_SYSTEM_PROMPT
+
+
 def score_tweet(client: anthropic.Anthropic, tweet: dict) -> dict:
     user_msg = f"Author: @{tweet['author_username']} ({tweet['author_name']})\nTweet: {tweet['text']}"
     try:
         response = client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=256,
-            system=SYSTEM_PROMPT,
+            system=_twitter_prompt(),
             messages=[{"role": "user", "content": user_msg}],
         )
         raw = response.content[0].text.strip()
@@ -140,7 +149,7 @@ def score_reddit_post(client: anthropic.Anthropic, post: dict) -> dict:
         response = client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=256,
-            system=REDDIT_SYSTEM_PROMPT,
+            system=_reddit_prompt(),
             messages=[{"role": "user", "content": user_msg}],
         )
         raw = response.content[0].text.strip()
