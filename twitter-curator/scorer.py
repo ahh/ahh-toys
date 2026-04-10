@@ -83,6 +83,93 @@ def score_batch(tweets: list, api_key: str) -> list:
     return passing
 
 
+REDDIT_SYSTEM_PROMPT = """You are a ruthlessly discerning content curator. Evaluate Reddit posts for a thoughtful person's daily digest.
+
+HARD REJECT (rejected=true, all scores=0) anything that is:
+- Political, partisan, about elections/politicians/policy/ideology
+- Outrage bait, manufactured controversy, or designed to provoke anger
+- Advertisements, self-promotion, or "I made a thing" hype
+- Generic advice, life tips, motivational content
+- Discourse about Reddit/social media itself
+- Low-effort memes with no actual wit (just a reaction image or basic format)
+- Anything that would make a thoughtful reader roll their eyes
+
+Note: NSFW/adult content is fine and should NOT be rejected on that basis alone.
+Judge on quality, not topic.
+
+For posts that survive the filter, score each dimension 1-10:
+
+meme (1-10): Is it genuinely funny or clever? Does the humor reward attention?
+  1=not funny, 4=mildly amusing, 6=actually funny, 8=clever and memorable, 10=exceptional
+
+insight (1-10): Is there a genuinely interesting perspective, discussion, or analysis?
+  1=obvious, 4=somewhat interesting, 6=makes you think, 8=reframes something real, 10=paradigm-shifting
+
+fact (1-10): Does it convey something surprising, true, and specific about the world?
+  1=not factual/known, 4=mildly interesting, 6=genuinely surprising, 8=dinner-party worthy, 10=jaw-dropping
+
+visual (1-10): If it's an image/video, is the visual content itself striking, beautiful, or remarkable?
+  1=unremarkable, 4=decent, 6=genuinely interesting, 8=stunning or fascinating, 10=exceptional
+  (Score 0 if there is no visual content)
+
+CALIBRATION: Most posts score 3-5. Score 7+ means excellent. Be harsh.
+Only one dimension needs to score 7+ for the post to be worth sending.
+
+Respond ONLY with valid JSON, no preamble:
+{"rejected": false, "rejection_reason": null, "meme": 0, "insight": 7, "fact": 3, "visual": 0,
+ "reasoning": "One sentence on the highest score and what specifically earns it."}"""
+
+
+def _compute_top(result: dict, dims: list[str]) -> tuple[int, str]:
+    top_score = max(result.get(d, 0) for d in dims)
+    category = max(dims, key=lambda d: result.get(d, 0))
+    return top_score, category
+
+
+def score_reddit_post(client: anthropic.Anthropic, post: dict) -> dict:
+    parts = [f"Subreddit: r/{post['subreddit']}", f"Title: {post['title']}"]
+    if post.get("text"):
+        parts.append(f"Body: {post['text'][:400]}")
+    if post.get("image_url"):
+        parts.append("[Has image/visual content]")
+    if post.get("external_url"):
+        parts.append(f"Links to: {post['external_url']}")
+
+    user_msg = "\n".join(parts)
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=256,
+            system=REDDIT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = response.content[0].text.strip()
+        result = json.loads(raw)
+    except Exception as e:
+        print(f"Score parse error for post {post.get('post_id')}: {e}", file=sys.stderr)
+        return {"rejected": True, "rejection_reason": "parse_error",
+                "meme": 0, "insight": 0, "fact": 0, "visual": 0, "reasoning": ""}
+
+    dims = ["meme", "insight", "fact", "visual"]
+    result["top_score"], result["category"] = _compute_top(result, dims)
+    return result
+
+
+def score_reddit_batch(posts: list, api_key: str) -> list:
+    """Score Reddit posts; return all non-rejected ones sorted by top_score descending."""
+    if not posts:
+        return []
+    client = anthropic.Anthropic(api_key=api_key)
+    passing = []
+    for post in posts:
+        scores = score_reddit_post(client, post)
+        if not scores.get("rejected"):
+            passing.append((post, scores))
+        time.sleep(0.5)
+    passing.sort(key=lambda x: x[1]["top_score"], reverse=True)
+    return passing
+
+
 def select_top_tweets(scored: list, n_min: int = 5, n_max: int = 7) -> list:
     """
     Pick the best tweets from the scored list.

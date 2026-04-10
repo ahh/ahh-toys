@@ -1,3 +1,4 @@
 twscrape>=0.12.0
 anthropic>=0.25.0
 python-telegram-bot>=21.0
+praw>=7.7.0
