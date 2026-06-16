@@ -1,6 +1,7 @@
 import asyncio
+import os
 import sys
-from datetime import datetime, timezone, timedelta
+import tempfile
 
 from twscrape import API, gather
 from twscrape.logger import set_log_level
@@ -24,7 +25,8 @@ def _build_tweet_dict(tweet) -> dict:
 
 async def _fetch(cookie_string: str, username: str, max_results: int) -> list:
     set_log_level("ERROR")  # suppress twscrape noise
-    api = API(pool=":memory:")
+    db_path = os.path.join(tempfile.mkdtemp(), "twscrape.db")
+    api = API(pool=db_path)
     await api.pool.add_account(
         username=username,
         password="",       # not needed when using cookies
