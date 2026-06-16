@@ -1,9 +1,10 @@
 name: Twitter Curator
 
 on:
-  schedule:
-    # Every 3 hours, UTC
-    - cron: '0 */3 * * *'
+  # Cron disabled until tweet sourcing is reworked (Twitter List). Re-enable
+  # by uncommenting the schedule block below.
+  # schedule:
+  #   - cron: '0 */3 * * *'   # Every 3 hours, UTC
   workflow_dispatch: # Manual trigger for testing
 
 permissions:

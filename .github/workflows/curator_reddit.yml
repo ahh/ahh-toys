@@ -1,9 +1,9 @@
 name: Reddit Curator
 
 on:
-  schedule:
-    # Offset by 90 minutes from the Twitter curator so they don't both run at once
-    - cron: '30 1,4,7,10,13,16,19,22 * * *'
+  # Cron disabled for now. Re-enable by uncommenting the schedule block below.
+  # schedule:
+  #   - cron: '30 1,4,7,10,13,16,19,22 * * *'
   workflow_dispatch: # Manual trigger for testing
 
 permissions:
