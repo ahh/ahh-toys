@@ -46,9 +46,13 @@ It's a static site — no build step, no dependencies.
   path.)
 - **On your phone (the point):** host it anywhere static and open it once with a
   signal, then **Add to Home Screen**. After that first load it works fully
-  offline. A ready-made GitHub Pages workflow is included — enable Pages
-  (repo *Settings → Pages → Source: GitHub Actions*) and it deploys this folder;
-  your URL will be `https://<user>.github.io/<repo>/`.
+  offline. A ready-made GitHub Pages workflow
+  (`.github/workflows/bingo-trainer-pages.yml`) is included — enable Pages
+  (repo *Settings → Pages → Source: GitHub Actions*) and it mounts this folder
+  under a `/bingo/` subpath, so the URL is
+  `https://<user>.github.io/<repo>/bingo/` (with a small landing page from
+  `www/` at the repo-Pages root). Every toy gets its own subpath; add another by
+  dropping a `cp` line in that workflow.
 
 ## Files
 

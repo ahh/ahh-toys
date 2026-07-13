@@ -1,13 +1,20 @@
-# Deploy the Scrabble Bingo Trainer (a static PWA) to GitHub Pages.
+# Deploy the repo's static toys to GitHub Pages.
 # Enable once under Settings -> Pages -> Source: "GitHub Actions".
-# Publishes the scrabble-bingo-trainer/ folder as the site root.
-name: Deploy bingo trainer to Pages
+#
+# The published site is assembled below. The repo's Pages URL is
+#   https://<user>.github.io/<repo>/   (i.e. .../ahh-toys/)
+# and each toy is mounted under its own subpath:
+#   www/                 -> site root  (the landing page)
+#   scrabble-bingo-trainer/ -> /bingo/
+# To add another toy later, drop it into the repo and add one cp line below.
+name: Deploy toys to Pages
 
 on:
   push:
     branches: [main, master]
     paths:
       - "scrabble-bingo-trainer/**"
+      - "www/**"
       - ".github/workflows/bingo-trainer-pages.yml"
   workflow_dispatch:
 
@@ -28,9 +35,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp -r www/. _site/                        # landing page at the root
+          mkdir -p _site/bingo
+          cp -r scrabble-bingo-trainer/. _site/bingo/
+          rm -rf _site/bingo/build _site/bingo/.gitignore  # don't publish tooling
+          echo "Published tree:" && find _site -maxdepth 2 -type f | sort
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: scrabble-bingo-trainer
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
