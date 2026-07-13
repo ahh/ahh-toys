@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#2f7d4f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bingos">
+  <title>Bingo Trainer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Bingo Trainer<small>find the 7 &amp; 8-letter plays</small></h1>
+    <div class="stat"><b id="stStreak">0</b><span>streak</span></div>
+    <div class="stat"><b id="stSolved">0</b><span>solved</span></div>
+    <div class="stat"><b id="stDue">0</b><span>due</span></div>
+  </header>
+
+  <main>
+    <div class="prompt" id="prompt">Loading word list&hellip;</div>
+    <div id="board" aria-label="tile rack"></div>
+    <div class="message" id="message"></div>
+    <div class="spacer"></div>
+    <div class="controls">
+      <button id="btnShuffle">Shuffle</button>
+      <button id="btnHint" class="ghost">Hint</button>
+      <button id="btnReveal" class="ghost">Give up</button>
+      <button id="btnNext" class="primary" hidden>Next rack &rarr;</button>
+    </div>
+  </main>
+
+  <details class="settings">
+    <summary>Settings &amp; progress</summary>
+    <div class="body">
+      <div class="row">
+        <label>Mode</label>
+        <div class="seg" id="modeSeg">
+          <button data-mode="rack" class="on">Rack&nbsp;(7)</button>
+          <button data-mode="board">Board&nbsp;(8&nbsp;thru&nbsp;tile)</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Difficulty</label>
+        <input type="range" id="reach" min="1" max="100" value="12">
+        <span class="reachval" id="reachVal">common</span>
+      </div>
+      <div class="mini">Difficulty widens the pool from the most-probable bingos (the ones you'll actually draw) toward the obscure ones. Racks you miss come back on a spaced-repetition schedule regardless.</div>
+      <div>
+        <div class="mini" style="margin-bottom:6px">Learning progress (Leitner boxes &rarr; more to the right = better known)</div>
+        <div class="boxes" id="boxes"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="danger" id="btnReset">Reset all progress</button>
+        <span class="spacer"></span>
+      </div>
+      <div class="mini">Works offline once loaded. Add to Home Screen for a full-screen, app-like experience. Word list: public-domain ENABLE.</div>
+    </div>
+  </details>
+
+  <script src="data/words7.js"></script>
+  <script src="data/words8.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    }
+  </script>
+</body>
+</html>
