@@ -47,6 +47,8 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   overscroll-behavior: none;
+  /* disable double-tap-to-zoom so tapping buttons doesn't zoom the page */
+  touch-action: manipulation;
 }
 
 header {
@@ -104,7 +106,8 @@ main {
   min-height: 96px;
 }
 .tile {
-  --sz: clamp(34px, 11.5vw, 56px);
+  /* size every tile so all --n of them fit the row with margin, capped at 56px */
+  --sz: min(56px, calc((100vw - 40px - (var(--n, 7) - 1) * 6px) / var(--n, 7)));
   width: var(--sz);
   height: var(--sz);
   flex: 0 0 auto;
@@ -137,11 +140,25 @@ main {
   cursor: default;
   touch-action: pan-y;
 }
+.tile.fixed { cursor: default; touch-action: pan-y; }
 .tile.locked::after {
   content: "board";
   position: absolute;
   top: -16px; left: 50%; transform: translateX(-50%);
   font: 600 9px/1 sans-serif; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .5px;
+}
+/* a tile placed for you by Hint: gold, ringed, and pinned in place */
+.tile.hint {
+  background: linear-gradient(160deg, #fff4d3, #f3e2ac 45%, #e6cd86);
+  border-color: var(--star);
+  box-shadow: 0 0 0 2px var(--star), var(--shadow);
+}
+.tile.hint::after {
+  content: "hint";
+  position: absolute;
+  top: -16px; left: 50%; transform: translateX(-50%);
+  font: 600 9px/1 sans-serif; color: var(--star);
   text-transform: uppercase; letter-spacing: .5px;
 }
 .tile.dragging {
@@ -175,14 +192,15 @@ main {
   flex-wrap: wrap;
 }
 button {
-  font: 600 14px/1 sans-serif;
-  padding: 12px 16px;
-  border-radius: 10px;
+  font: 600 15px/1 sans-serif;
+  padding: 15px 20px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
-  min-height: 44px;
+  min-height: 52px;
+  touch-action: manipulation;
   transition: transform .05s;
 }
 button:active { transform: scale(.96); }
@@ -213,7 +231,7 @@ button:disabled { opacity: .4; pointer-events: none; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .row label { font-size: 13px; color: var(--muted); min-width: 92px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
-.seg button { border: none; border-radius: 0; background: transparent; padding: 9px 14px; min-height: 0; }
+.seg button { border: none; border-radius: 0; background: transparent; padding: 12px 16px; min-height: 48px; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
 .reachval { font-size: 12px; color: var(--muted); min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }

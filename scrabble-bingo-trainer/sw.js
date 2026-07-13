@@ -1,5 +1,5 @@
 /* Offline cache. Bump CACHE when any asset changes to force a refresh. */
-var CACHE = "bingo-trainer-v1";
+var CACHE = "bingo-trainer-v2";
 var ASSETS = [
   "./",
   "index.html",

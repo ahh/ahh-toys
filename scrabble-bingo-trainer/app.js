@@ -100,8 +100,8 @@
   // ---- Round state --------------------------------------------------------
   var mode = store.settings.mode;   // 'rack' | 'board'
   var len = mode === "board" ? 8 : 7;
-  var cur = null;                   // { alpha, solutions:Set, reachable:[], tiles, order, lockPos, lockTile }
-  var solved = false, revealed = false, hintLevel = 0;
+  var cur = null;                   // { alpha, solutions:Set, reachable:[], order, fixed{pos:tile}, boardPos, hintTarget, hintsUsed }
+  var solved = false, revealed = false;
   var tileSeq = 0;
 
   function randInt(n) { return Math.floor(Math.random() * n); }
@@ -139,25 +139,28 @@
 
   function newRound() {
     store.turn++;
-    solved = false; revealed = false; hintLevel = 0;
+    solved = false; revealed = false;
     len = mode === "board" ? 8 : 7;
     var alpha = chooseAlpha();
     var solutions = INDEX[len].map[alpha];
-    cur = { alpha: alpha, solutions: new Set(solutions), lockPos: -1, lockTile: null };
+    // fixed: map of position -> tile that can't be dragged (the board tile and
+    // any tiles the player has locked in via Hint). order: the movable tiles.
+    cur = { alpha: alpha, solutions: new Set(solutions), fixed: {}, boardPos: -1,
+            hintTarget: null, hintsUsed: 0 };
 
     var letters;
     if (mode === "board") {
       var w = pick(solutions);
       var i = 1 + randInt(len - 2);   // interior: you play *through* a tile
-      cur.lockPos = i;
-      cur.lockTile = mkTile(w[i], true);
+      cur.boardPos = i;
+      cur.fixed[i] = mkTile(w[i], "board");
       cur.reachable = solutions.filter(function (s) { return s[i] === w[i]; });
       letters = (w.slice(0, i) + w.slice(i + 1)).split("");
     } else {
       cur.reachable = solutions;
       letters = alpha.split("");
     }
-    cur.order = shuffled(letters).map(function (ch) { return mkTile(ch, false); });
+    cur.order = shuffled(letters).map(function (ch) { return mkTile(ch); });
     save();
     render();
     updateStats();
@@ -168,14 +171,15 @@
     btnNext.hidden = true;
     btnReveal.disabled = false; btnHint.disabled = false;
   }
-  function mkTile(ch, locked) { return { id: ++tileSeq, ch: ch, locked: !!locked }; }
+  function mkTile(ch, kind) { return { id: ++tileSeq, ch: ch, kind: kind || null }; }
 
-  // current arrangement, left to right
+  // current arrangement, left to right (fixed slots hold their tile; the rest
+  // are filled from `order`)
   function spelled() {
     var out = "", oi = 0;
     for (var p = 0; p < len; p++) {
-      if (p === cur.lockPos) out += cur.lockTile.ch;
-      else out += cur.order[oi++].ch;
+      var fx = cur.fixed[p];
+      out += fx ? fx.ch : cur.order[oi++].ch;
     }
     return out;
   }
@@ -196,15 +200,19 @@
 
   function render() {
     board.innerHTML = "";
+    board.style.setProperty("--n", len);   // tiles size themselves to fit the row
     var oi = 0;
     for (var p = 0; p < len; p++) {
-      var tile = (p === cur.lockPos) ? cur.lockTile : cur.order[oi++];
-      board.appendChild(tileEl(tile, p === cur.lockPos ? -1 : oi - 1));
+      var fx = cur.fixed[p];
+      var tile = fx || cur.order[oi++];
+      board.appendChild(tileEl(tile, fx ? -1 : oi - 1));
     }
   }
   function tileEl(tile, orderIndex) {
     var el = document.createElement("div");
-    el.className = "tile" + (tile.locked ? " locked" : "");
+    var cls = "tile";
+    if (tile.kind) { cls += " fixed"; cls += tile.kind === "board" ? " locked" : " hint"; }
+    el.className = cls;
     el.dataset.oi = orderIndex;
     el.dataset.id = tile.id;
     el.textContent = tile.ch;
@@ -212,7 +220,7 @@
     pts.className = "pts";
     pts.textContent = PTS[tile.ch.toUpperCase()];
     el.appendChild(pts);
-    if (!tile.locked) attachDrag(el, tile);
+    if (!tile.kind) attachDrag(el, tile);
     return el;
   }
 
@@ -226,7 +234,8 @@
 
   function win(w) {
     solved = true;
-    recordResult(cur.alpha, true);
+    // A solve that needed hints doesn't count as recall -> resurface it sooner.
+    recordResult(cur.alpha, cur.hintsUsed === 0);
     store.stats.solved++;
     store.stats.streak++;
     store.stats.best = Math.max(store.stats.best, store.stats.streak);
@@ -240,7 +249,8 @@
         + (also.length > 12 ? " &hellip;" : "") + "</div>"
       : '<div class="also">the only bingo here</div>';
     setMessage('<div class="word good">' + w.toUpperCase() + "</div>"
-      + '<div class="score">' + wordScore(w) + " pts with the bingo bonus</div>" + alsoHtml);
+      + '<div class="score">' + wordScore(w) + " pts with the bingo bonus"
+      + (cur.hintsUsed ? " &middot; with hints" : "") + "</div>" + alsoHtml);
     finishRound();
   }
 
@@ -265,19 +275,34 @@
     renderBoxes();
   }
 
+  // Each Hint drops one correct tile into a RANDOM open slot and locks it there,
+  // narrowing toward a single target word. Leaves >=2 slots for you to arrange.
   function hint() {
     if (solved || revealed) return;
-    hintLevel++;
     var sol = cur.reachable.slice().sort();
-    var n = sol.length;
-    if (hintLevel === 1) {
-      setMessage('<div class="hint">' + n + (n === 1 ? " bingo" : " bingos") + " hiding in these tiles.</div>");
-    } else {
-      var nShown = Math.min(hintLevel - 1, len - 1);
-      var w = sol[0];
-      var shown = w.slice(0, nShown).toUpperCase() + "·".repeat(len - nShown);
-      setMessage('<div class="hint">starts with <span class="word">' + shown + "</span></div>");
+    if (!cur.hintTarget) cur.hintTarget = sol[0];
+    var W = cur.hintTarget;
+    var openPos = [];
+    for (var p = 0; p < len; p++) if (!cur.fixed[p]) openPos.push(p);
+    if (openPos.length > 2) {
+      var tp = openPos[randInt(openPos.length)];
+      var needed = W[tp], idx = -1;
+      for (var k = 0; k < cur.order.length; k++) if (cur.order[k].ch === needed) { idx = k; break; }
+      if (idx >= 0) {
+        var t = cur.order.splice(idx, 1)[0];
+        t.kind = "hint";
+        cur.fixed[tp] = t;
+        cur.hintsUsed++;
+        render();
+      }
     }
+    var placed = 0, q;
+    for (q in cur.fixed) if (cur.fixed[q].kind === "hint") placed++;
+    var n = sol.length;
+    setMessage('<div class="hint">' + n + (n === 1 ? " bingo" : " bingos") + " here"
+      + (placed ? " &middot; " + placed + " letter" + (placed > 1 ? "s" : "") + " placed" : "")
+      + (openPos.length <= 2 ? " &mdash; almost there" : "") + "</div>");
+    onArranged();
   }
 
   // ---- Stats / boxes ------------------------------------------------------
@@ -312,7 +337,7 @@
       if (solved || revealed || drag) return;
       e.preventDefault();
       el.setPointerCapture(e.pointerId);
-      var opens = [].filter.call(board.children, function (c) { return !c.classList.contains("locked"); });
+      var opens = [].filter.call(board.children, function (c) { return !c.classList.contains("fixed"); });
       var base = opens.map(function (c) { var r = c.getBoundingClientRect(); return { left: r.left, w: r.width, mid: r.left + r.width / 2 }; });
       var oi = opens.indexOf(el);
       drag = { el: el, pid: e.pointerId, opens: opens, base: base, oi: oi,
@@ -413,13 +438,14 @@
     window.__sbt = {
       state: function () {
         return { len: len, mode: mode, spelled: spelled(), solved: solved,
-                 reachable: cur.reachable.slice(), lockPos: cur.lockPos };
+                 reachable: cur.reachable.slice(), boardPos: cur.boardPos,
+                 hintsUsed: cur.hintsUsed };
       },
       // Arrange the open tiles into the first reachable solution and fire the
       // real onArranged() win path.
       solveFirst: function () {
         var w = cur.reachable[0], want = [], p;
-        for (p = 0; p < len; p++) if (p !== cur.lockPos) want.push(w[p]);
+        for (p = 0; p < len; p++) if (!cur.fixed[p]) want.push(w[p]);
         var pool = cur.order.slice();
         cur.order = want.map(function (ch) {
           for (var i = 0; i < pool.length; i++) if (pool[i].ch === ch) return pool.splice(i, 1)[0];
