@@ -6,6 +6,7 @@
 # and each toy is mounted under its own subpath:
 #   www/                 -> site root  (the landing page)
 #   scrabble-bingo-trainer/ -> /bingo/
+#   hourglass/           -> /hourglass/
 # To add another toy later, drop it into the repo and add one cp line below.
 name: Deploy toys to Pages
 
@@ -14,6 +15,7 @@ on:
     branches: [main, master]
     paths:
       - "scrabble-bingo-trainer/**"
+      - "hourglass/**"
       - "www/**"
       - ".github/workflows/bingo-trainer-pages.yml"
   workflow_dispatch:
@@ -43,6 +45,8 @@ jobs:
           mkdir -p _site/bingo
           cp -r scrabble-bingo-trainer/. _site/bingo/
           rm -rf _site/bingo/build _site/bingo/.gitignore  # don't publish tooling
+          mkdir -p _site/hourglass
+          cp -r hourglass/. _site/hourglass/
           echo "Published tree:" && find _site -maxdepth 2 -type f | sort
 
       - uses: actions/configure-pages@v5

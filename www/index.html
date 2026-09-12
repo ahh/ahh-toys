@@ -16,6 +16,7 @@
     main { width: min(560px, 90vw); padding: 32px 4px; }
     h1 { font: 700 22px/1 "Georgia", serif; margin: 0 0 4px; }
     p.sub { color: #7c766a; margin: 0 0 28px; }
+    .toys { display: grid; gap: 12px; }
     a.toy {
       display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit;
       padding: 16px; border: 1px solid #e2ddd0; border-radius: 14px; background: #fffdf7;
@@ -35,13 +36,23 @@
     <h1>ahh-toys</h1>
     <p class="sub">Various toys, tricks, and demos.</p>
 
-    <a class="toy" href="./bingo/">
-      <img src="./bingo/icon.svg" alt="">
-      <span>
-        <b>Scrabble Bingo Trainer &rarr;</b>
-        <span>Drill 7- &amp; 8-letter bingos. Drag tiles, works offline, add to home screen.</span>
-      </span>
-    </a>
+    <div class="toys">
+      <a class="toy" href="./bingo/">
+        <img src="./bingo/icon.svg" alt="">
+        <span>
+          <b>Scrabble Bingo Trainer &rarr;</b>
+          <span>Drill 7- &amp; 8-letter bingos. Drag tiles, works offline, add to home screen.</span>
+        </span>
+      </a>
+
+      <a class="toy" href="./hourglass/">
+        <img src="./hourglass/icon.svg" alt="">
+        <span>
+          <b>Hourglass &rarr;</b>
+          <span>A flowing sand timer of any length. No numbers, just sand.</span>
+        </span>
+      </a>
+    </div>
 
     <footer>Source: <a href="https://github.com/ahh/ahh-toys">github.com/ahh/ahh-toys</a></footer>
   </main>

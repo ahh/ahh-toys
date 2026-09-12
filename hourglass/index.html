@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hourglass</title>
+  <meta name="description" content="A quiet, flowing hourglass timer. Pick a length, watch the sand. No numbers.">
+  <meta name="theme-color" content="#0a0d14">
+  <link rel="icon" href="./icon.svg">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #efe6d2;
+      --dim: rgba(239, 230, 210, 0.55);
+      --faint: rgba(239, 230, 210, 0.22);
+      --gold: #e4b962;
+      --panel: rgba(16, 20, 30, 0.62);
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; overflow: hidden; background: #05070b; color: var(--ink);
+      font: 15px/1.45 var(--sans);
+      -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+    }
+    canvas#stage {
+      position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+      transition: transform 1.15s cubic-bezier(.65, .02, .3, 1);
+      will-change: transform;
+    }
+    canvas#stage.notrans { transition: none; }
+
+    /* ---- setup panel ---- */
+    #panel {
+      position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: min(420px, calc(100vw - 32px));
+      padding: 18px 20px 16px; border-radius: 18px;
+      background: var(--panel); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      transition: opacity .5s ease, transform .5s ease, visibility 0s linear 0s;
+    }
+    #panel.hidden {
+      opacity: 0; pointer-events: none; visibility: hidden;
+      transform: translateX(-50%) translateY(14px);
+      transition: opacity .5s ease, transform .5s ease, visibility 0s linear .5s;
+    }
+    #panel h1 {
+      margin: 0 0 2px; font: 400 22px/1.2 var(--serif); letter-spacing: .04em; color: var(--ink);
+    }
+    #panel p.lede { margin: 0 0 14px; color: var(--dim); font-size: 13px; }
+    .row { display: flex; gap: 10px; align-items: stretch; }
+    #dur {
+      flex: 1; min-width: 0; font: 400 24px/1 var(--serif); letter-spacing: .02em;
+      color: var(--ink); background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 10px 14px;
+      outline: none; text-align: center;
+    }
+    #dur:focus { border-color: rgba(228, 185, 98, 0.7); box-shadow: 0 0 0 3px rgba(228, 185, 98, 0.15); }
+    #dur.bad { border-color: rgba(230, 110, 90, 0.8); }
+    #start {
+      font: 500 15px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase;
+      color: #1b1407; background: linear-gradient(180deg, #f2cc7a, #d9a94c);
+      border: 0; border-radius: 12px; padding: 0 22px; cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 6px 18px rgba(217, 169, 76, 0.25);
+      transition: transform .08s, filter .15s;
+    }
+    #start:hover { filter: brightness(1.05); }
+    #start:active { transform: translateY(1px) scale(.99); }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .presets button {
+      font: 500 12.5px/1 var(--sans); color: var(--dim); background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 7px 11px; cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+    }
+    .presets button:hover, .presets button.on { color: var(--ink); border-color: rgba(228, 185, 98, 0.6); background: rgba(228, 185, 98, 0.08); }
+    .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; color: var(--faint); font-size: 12px; }
+    .foot label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--dim); }
+    .foot input { accent-color: var(--gold); margin: 0; }
+    .hint { font-variant-numeric: tabular-nums; }
+
+    /* ---- running: a single quiet escape hatch that appears on activity ---- */
+    #cancel {
+      position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
+      width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(16, 20, 30, 0.5); color: var(--dim); font: 300 20px/1 var(--sans);
+      cursor: pointer; display: grid; place-items: center;
+      opacity: 0; pointer-events: none; transition: opacity .4s ease;
+    }
+    #cancel.show { opacity: 1; pointer-events: auto; }
+    #cancel:hover { color: var(--ink); }
+
+    /* ---- finished ---- */
+    #done {
+      position: fixed; left: 50%; bottom: max(34px, calc(env(safe-area-inset-bottom) + 20px));
+      transform: translateX(-50%); text-align: center; pointer-events: none;
+      opacity: 0; transition: opacity 1.4s ease;
+    }
+    #done.show { opacity: 1; pointer-events: auto; }
+    #done .big { font: 400 30px/1.15 var(--serif); letter-spacing: .06em; color: var(--ink); text-shadow: 0 0 24px rgba(228, 185, 98, 0.35); }
+    #done .sub { margin-top: 8px; color: var(--dim); font-size: 13px; }
+    #done button {
+      margin-top: 14px; font: 500 12.5px/1 var(--sans); letter-spacing: .05em; color: var(--dim);
+      background: transparent; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; padding: 8px 14px; cursor: pointer;
+    }
+    #done button:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.3); }
+
+    #stage.grabbable { cursor: pointer; }
+    @media (prefers-reduced-motion: reduce) {
+      canvas#stage { transition-duration: .01s; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" aria-label="Animated hourglass"></canvas>
+
+  <form id="panel" autocomplete="off">
+    <h1>Hourglass</h1>
+    <p class="lede">Choose how long the sand should run. Nothing counts down but the sand.</p>
+    <div class="row">
+      <input id="dur" inputmode="text" value="5" aria-label="Duration" spellcheck="false">
+      <button id="start" type="submit">Start</button>
+    </div>
+    <div class="presets" id="presets">
+      <button type="button" data-d="1m">1 min</button>
+      <button type="button" data-d="3m">3 min</button>
+      <button type="button" data-d="5m">5 min</button>
+      <button type="button" data-d="10m">10 min</button>
+      <button type="button" data-d="15m">15 min</button>
+      <button type="button" data-d="25m">25 min</button>
+      <button type="button" data-d="1h">1 hour</button>
+    </div>
+    <div class="foot">
+      <span class="hint" id="parsed"></span>
+      <label><input type="checkbox" id="chime" checked> chime at the end</label>
+    </div>
+  </form>
+
+  <button id="cancel" type="button" title="Stop and reset (Esc)" aria-label="Stop and reset">&times;</button>
+
+  <div id="done" aria-live="polite">
+    <div class="big">Time&rsquo;s up</div>
+    <div class="sub">Tap the hourglass to turn it over</div>
+    <button type="button" id="again">Change the length</button>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ------------------------------------------------------------------
+  // Geometry. Everything lives in "unit" coordinates: the glass spans
+  // y in [-0.5, 0.5] (y grows downward, neck at 0) and is symmetric.
+  // ------------------------------------------------------------------
+  const R = 0.30;         // widest half-width of a bulb
+  const NECK = 0.019;     // half-width of the neck
+  const SLOPE = 0.56;     // tan(angle of repose) ~ 29 degrees
+  const CAP_H = 0.075;    // wooden cap height
+  const CAP_W = R + 0.075;
+  const POST_W = 0.030;
+  const ROWS = 360;       // integration rows per bulb
+
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const smooth = t => t * t * (3 - 2 * t);
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // Half-width of the glass, u = 0 at a cap, u = 1 at the neck.
+  function profile(u) {
+    const t = clamp(u, 0, 1);
+    const bulb = 1 - smooth(Math.pow(t, 1.85));
+    const cap = 1 - 0.26 * Math.pow(1 - clamp(t / 0.24, 0, 1), 2);
+    return NECK + (R - NECK) * bulb * cap;
+  }
+  const w = y => profile(y < 0 ? (y + 0.5) / 0.5 : (0.5 - y) / 0.5);
+
+  // Sand in the top bulb sits below a V-shaped crater at the angle of
+  // repose whose rim touches the glass at yEdge.
+  function topArea(yEdge) {
+    const wE = w(yEdge), dy = (0 - yEdge) / ROWS;
+    let a = 0;
+    for (let i = 0; i < ROWS; i++) {
+      const y = yEdge + (i + 0.5) * dy;
+      const inner = Math.max(0, wE - (y - yEdge) / SLOPE);
+      a += 2 * Math.max(0, w(y) - inner) * dy;
+    }
+    return a;
+  }
+  // Sand in the bottom bulb is a mound at the angle of repose, apex at yPeak.
+  function botArea(yPeak) {
+    const dy = (0.5 - yPeak) / ROWS;
+    let a = 0;
+    for (let i = 0; i < ROWS; i++) {
+      const y = yPeak + (i + 0.5) * dy;
+      a += 2 * Math.min(w(y), (y - yPeak) / SLOPE) * dy;
+    }
+    return a;
+  }
+  function solveTop(area) {            // -> yEdge in [-0.5, 0]
+    if (area <= 1e-7) return 0;
+    let lo = -0.5, hi = 0;             // area(lo) max, area(hi) = 0
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (topArea(mid) > area) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  function solveBot(area) {            // -> yPeak in [0, 0.5]
+    if (area <= 1e-7) return 0.5;
+    let lo = 0, hi = 0.5;              // area(lo) max, area(hi) = 0
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (botArea(mid) > area) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // How much sand there is: the crater rim starts a little below the cap,
+  // and the mound must finish clear of the neck.
+  const A_TOTAL = Math.min(topArea(-0.5 + 0.075), botArea(0.09));
+
+  // ------------------------------------------------------------------
+  // State
+  // ------------------------------------------------------------------
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const panel = document.getElementById('panel');
+  const durEl = document.getElementById('dur');
+  const parsedEl = document.getElementById('parsed');
+  const cancelBtn = document.getElementById('cancel');
+  const doneEl = document.getElementById('done');
+  const chimeEl = document.getElementById('chime');
+
+  let W = 0, H = 0, dpr = 1, S = 1, CX = 0, CY = 0;   // pixel layout (S, CY ease toward targets)
+  let targetS = 1, targetCY = 0;
+  let mode = 'ready';           // ready | running | draining | done | flipping
+  let durationMs = 5 * 60e3;
+  let startedAt = 0;
+  let frac = 0;                 // 0..1 sand transferred
+  let doneAt = 0;
+  let lastT = 0;
+  let particles = [];
+  let spawnAcc = 0;
+  let cancelTimer = 0;
+  let wakeLock = null;
+  let audioCtx = null;
+  let grainPattern = null;
+
+  const px = x => CX + x * S;
+  const py = y => CY + y * S;
+
+  // ------------------------------------------------------------------
+  // Duration parsing: "5" (minutes), "90s", "1:30", "1h30m", "2h"
+  // ------------------------------------------------------------------
+  function parseDuration(str) {
+    const s = String(str).trim().toLowerCase().replace(/\s+/g, '');
+    if (!s) return null;
+    let sec = 0;
+    if (/^\d+(\.\d+)?$/.test(s)) sec = parseFloat(s) * 60;
+    else if (/^\d+(:\d{1,2}){1,2}$/.test(s)) {
+      const parts = s.split(':').map(Number);
+      sec = parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (/^(\d+(\.\d+)?(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds))+$/.test(s)) {
+      const re = /(\d+(?:\.\d+)?)(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+      let m;
+      while ((m = re.exec(s))) {
+        const v = parseFloat(m[1]), u = m[2][0];
+        sec += v * (u === 'h' ? 3600 : u === 'm' ? 60 : 1);
+      }
+    } else return null;
+    if (!(sec >= 3 && sec <= 24 * 3600)) return null;
+    return Math.round(sec * 1000);
+  }
+  function describe(ms) {
+    let s = Math.round(ms / 1000);
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    const out = [];
+    if (h) out.push(h + (h === 1 ? ' hour' : ' hours'));
+    if (m) out.push(m + ' min');
+    if (s) out.push(s + ' sec');
+    return out.join(' ');
+  }
+  function refreshParsed() {
+    const ms = parseDuration(durEl.value);
+    durEl.classList.toggle('bad', ms === null);
+    parsedEl.textContent = ms === null ? 'try 5, 90s, 1:30 or 2h' : describe(ms) + ' of sand';
+    for (const b of document.querySelectorAll('#presets button'))
+      b.classList.toggle('on', ms !== null && parseDuration(b.dataset.d) === ms);
+    return ms;
+  }
+
+  // ------------------------------------------------------------------
+  // Layout
+  // ------------------------------------------------------------------
+  const TOTAL_H = 1 + 2 * CAP_H + 0.02, TOTAL_W = 2 * CAP_W + 0.06;
+  function layoutTargets() {
+    const fitW = (W - 24) / TOTAL_W;
+    if (mode === 'ready') {
+      // leave room for the setup panel below the glass
+      const top = 14, gap = 22;
+      const availH = Math.max(120, H - (panel.offsetHeight + 18) - gap - top);
+      targetS = Math.min(availH / TOTAL_H, fitW);
+      targetCY = top + availH / 2;
+    } else if (mode === 'done' || mode === 'flipping') {
+      // leave room for the caption below the glass
+      const top = 14, gap = 12;
+      const availH = Math.max(120, H - (doneEl.offsetHeight + 34) - gap - top);
+      targetS = Math.min(availH / TOTAL_H, fitW);
+      targetCY = top + availH / 2;
+    } else {
+      targetS = Math.min((H * 0.86) / TOTAL_H, fitW);
+      targetCY = H * 0.5;
+    }
+  }
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    CX = W / 2;
+    layoutTargets();
+    S = targetS; CY = targetCY;
+    grainPattern = makeGrain();
+  }
+  function easeLayout(dt) {
+    layoutTargets();
+    const k = 1 - Math.exp(-dt * 3.2);
+    S += (targetS - S) * k; CY += (targetCY - CY) * k;
+    if (Math.abs(targetS - S) < 0.05) S = targetS;
+    if (Math.abs(targetCY - CY) < 0.05) CY = targetCY;
+    // the flip rotates about the glass, wherever it sits
+    canvas.style.transformOrigin = CX + 'px ' + CY + 'px';
+  }
+  function makeGrain() {
+    const n = 96, c = document.createElement('canvas');
+    c.width = c.height = Math.round(n * dpr);
+    const g = c.getContext('2d');
+    g.scale(dpr, dpr);
+    for (let i = 0; i < 1400; i++) {
+      const x = Math.random() * n, y = Math.random() * n, r = 0.45 + Math.random() * 0.8;
+      const light = Math.random() < 0.45;
+      g.fillStyle = light ? `rgba(255,240,200,${0.10 + Math.random() * 0.22})` : `rgba(70,40,10,${0.10 + Math.random() * 0.24})`;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    const p = ctx.createPattern(c, 'repeat');
+    try { p.setTransform(new DOMMatrix().scale(1 / dpr)); } catch (e) { /* older browsers: coarser grain */ }
+    return p;
+  }
+
+  // ------------------------------------------------------------------
+  // Path builders (in pixel space)
+  // ------------------------------------------------------------------
+  function glassPath() {
+    const p = new Path2D();
+    const n = 160;
+    p.moveTo(px(w(-0.5)), py(-0.5));
+    for (let i = 1; i <= n; i++) { const y = -0.5 + i / n; p.lineTo(px(w(y)), py(y)); }
+    for (let i = n; i >= 0; i--) { const y = -0.5 + i / n; p.lineTo(px(-w(y)), py(y)); }
+    p.closePath();
+    return p;
+  }
+  function topSandPath(yEdge) {
+    const p = new Path2D();
+    if (yEdge >= -1e-6) return p;
+    const n = 120, wE = w(yEdge);
+    const inner = y => clamp(wE - (y - yEdge) / SLOPE, 0, w(y));
+    p.moveTo(px(w(yEdge)), py(yEdge));
+    for (let i = 1; i <= n; i++) { const y = lerp(yEdge, 0, i / n); p.lineTo(px(w(y)), py(y)); }
+    p.lineTo(px(-w(0)), py(0));
+    for (let i = n - 1; i >= 0; i--) { const y = lerp(yEdge, 0, i / n); p.lineTo(px(-w(y)), py(y)); }
+    for (let i = 1; i <= n; i++) { const y = lerp(yEdge, 0, i / n); p.lineTo(px(-inner(y)), py(y)); }
+    for (let i = n; i >= 0; i--) { const y = lerp(yEdge, 0, i / n); p.lineTo(px(inner(y)), py(y)); }
+    p.closePath();
+    return p;
+  }
+  function craterSurface(yEdge) {   // the exposed crater edge, for a highlight
+    const p = new Path2D();
+    const wE = w(yEdge), n = 40;
+    const inner = y => clamp(wE - (y - yEdge) / SLOPE, 0, w(y));
+    const yTip = Math.min(0, yEdge + SLOPE * wE);
+    for (let i = 0; i <= n; i++) { const y = lerp(yEdge, yTip, i / n); const x = inner(y); if (i === 0) p.moveTo(px(-x), py(y)); else p.lineTo(px(-x), py(y)); }
+    for (let i = n; i >= 0; i--) { const y = lerp(yEdge, yTip, i / n); p.lineTo(px(inner(y)), py(y)); }
+    return p;
+  }
+  function botSandPath(yPeak) {
+    const p = new Path2D();
+    if (yPeak >= 0.5 - 1e-6) return p;
+    const n = 120;
+    const hw = y => Math.min(w(y), (y - yPeak) / SLOPE);
+    p.moveTo(px(0), py(yPeak));
+    for (let i = 1; i <= n; i++) { const y = lerp(yPeak, 0.5, i / n); p.lineTo(px(hw(y)), py(y)); }
+    for (let i = n; i >= 0; i--) { const y = lerp(yPeak, 0.5, i / n); p.lineTo(px(-hw(y)), py(y)); }
+    p.closePath();
+    return p;
+  }
+  function moundSurface(yPeak) {
+    const p = new Path2D();
+    const n = 40, hw = y => Math.min(w(y), (y - yPeak) / SLOPE);
+    // walk from the left wall contact up to the apex and down the right
+    let yC = 0.5;
+    for (let i = 0; i <= 200; i++) { const y = lerp(yPeak, 0.5, i / 200); if ((y - yPeak) / SLOPE >= w(y)) { yC = y; break; } }
+    for (let i = 0; i <= n; i++) { const y = lerp(yC, yPeak, i / n); const x = hw(y); if (i === 0) p.moveTo(px(-x), py(y)); else p.lineTo(px(-x), py(y)); }
+    for (let i = n; i >= 0; i--) { const y = lerp(yC, yPeak, i / n); p.lineTo(px(hw(y)), py(y)); }
+    return p;
+  }
+  function roundRect(x, y, wd, ht, r) {
+    const p = new Path2D(); p.roundRect(x, y, wd, ht, r); return p;
+  }
+
+  // ------------------------------------------------------------------
+  // Particles: the falling stream and the little skitters where it lands.
+  // Unit-space physics; purely cosmetic (timing is analytic).
+  // ------------------------------------------------------------------
+  const GRAV = 4.2;
+  const STREAM_RATE = 210;      // grains per second in flight
+  function surfaceY(x, yPeak) { // mound surface under the stream
+    const a = Math.abs(x);
+    let y = yPeak + a * SLOPE;
+    if (y > 0.5) y = 0.5;
+    return y;
+  }
+  function stepParticles(dt, yPeak, flowing) {
+    if (flowing) {
+      spawnAcc += STREAM_RATE * dt;
+      while (spawnAcc >= 1) {
+        spawnAcc -= 1;
+        const r = (Math.random() + Math.random() - 1) * NECK * 0.62;
+        particles.push({ x: r, y: 0.005 + Math.random() * 0.01, vx: (Math.random() - 0.5) * 0.012, vy: 0.10 + Math.random() * 0.12,
+          r: 0.55 + Math.random() * 0.9, a: 0.55 + Math.random() * 0.45, kind: 0, life: 9 });
+      }
+    }
+    const next = [];
+    for (const p of particles) {
+      p.vy += GRAV * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= dt;
+      const sy = surfaceY(p.x, yPeak);
+      if (p.kind === 0) {
+        if (p.y >= sy - 0.002) {
+          if (Math.random() < 0.55 && next.length < 900) {
+            const dir = p.x === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(p.x + (Math.random() - 0.5) * 0.01);
+            next.push({ x: p.x, y: sy - 0.003, vx: dir * (0.06 + Math.random() * 0.16), vy: -(0.04 + Math.random() * 0.10),
+              r: 0.5 + Math.random() * 0.6, a: 0.6 + Math.random() * 0.3, kind: 1, life: 0.28 + Math.random() * 0.3 });
+          }
+          continue;
+        }
+        if (p.y > 0.5) continue;
+        next.push(p);
+      } else {
+        if (p.life <= 0) continue;
+        if (p.y >= sy) { // slide along the slope, bleeding energy
+          p.y = sy - 0.001;
+          p.vy = Math.min(p.vy, 0) * -0.15;
+          p.vx *= 0.9;
+        }
+        if (Math.abs(p.x) > w(Math.min(0.5, Math.max(0, p.y))) - 0.003) continue;
+        next.push(p);
+      }
+    }
+    particles = next;
+  }
+
+  // ------------------------------------------------------------------
+  // Drawing
+  // ------------------------------------------------------------------
+  function draw(now) {
+    const t = now / 1000;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // --- background ---
+    const bg = ctx.createRadialGradient(CX, CY - S * 0.1, S * 0.05, CX, CY, Math.max(W, H) * 0.85);
+    bg.addColorStop(0, '#1a2130');
+    bg.addColorStop(0.55, '#0d111a');
+    bg.addColorStop(1, '#05070b');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // warm breathing glow behind the glass; swells when finished
+    const doneAge = mode === 'done' || mode === 'flipping' ? (now - doneAt) / 1000 : 0;
+    const breathe = 0.5 + 0.5 * Math.sin(t * 0.9);
+    let glowA = 0.10 + 0.05 * breathe;
+    if (doneAge > 0) glowA += 0.22 * Math.exp(-doneAge * 0.35) + 0.06 * (0.5 + 0.5 * Math.sin(t * 1.6));
+    const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, S * 0.85);
+    glow.addColorStop(0, `rgba(228,185,98,${glowA})`);
+    glow.addColorStop(0.5, `rgba(228,185,98,${glowA * 0.35})`);
+    glow.addColorStop(1, 'rgba(228,185,98,0)');
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+    // --- sand levels ---
+    const areaTop = A_TOTAL * (1 - frac), areaBot = A_TOTAL * frac;
+    const yEdge = solveTop(areaTop), yPeak = solveBot(areaBot);
+
+    const glass = glassPath();
+
+    // --- frame: back post ---
+    drawPost(0, 0.55);
+
+    // --- glass body (behind the sand) ---
+    ctx.save();
+    ctx.clip(glass);
+    const gb = ctx.createLinearGradient(px(-R), 0, px(R), 0);
+    gb.addColorStop(0, 'rgba(255,255,255,0.09)');
+    gb.addColorStop(0.25, 'rgba(255,255,255,0.025)');
+    gb.addColorStop(0.7, 'rgba(255,255,255,0.02)');
+    gb.addColorStop(1, 'rgba(255,255,255,0.08)');
+    ctx.fillStyle = gb; ctx.fillRect(0, 0, W, H);
+
+    // --- sand ---
+    const topPath = topSandPath(yEdge), botPath = botSandPath(yPeak);
+    drawSand(topPath, yEdge - (-0.5 + 0.075));  // texture rides down with the sand
+    drawSand(botPath, 0);
+
+    // surface highlights
+    ctx.lineWidth = Math.max(1, S * 0.0035);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,236,190,0.35)';
+    if (yEdge < 0) ctx.stroke(craterSurface(yEdge));
+    if (yPeak < 0.5) ctx.stroke(moundSurface(yPeak));
+
+    // --- stream ---
+    const flowing = mode === 'running' || (mode === 'draining' && frac < 1);
+    if (mode === 'running' || mode === 'draining') {
+      // a faint continuous core so the grains read as one falling thread
+      const yLand = surfaceY(0, yPeak);
+      const core = ctx.createLinearGradient(0, py(0), 0, py(yLand));
+      core.addColorStop(0, 'rgba(236,200,130,0.55)');
+      core.addColorStop(0.15, 'rgba(236,200,130,0.28)');
+      core.addColorStop(1, 'rgba(236,200,130,0.10)');
+      if (flowing || particles.length) {
+        ctx.strokeStyle = core; ctx.lineWidth = Math.max(1, S * 0.006);
+        ctx.beginPath(); ctx.moveTo(px(0), py(0)); ctx.lineTo(px(0), py(yLand)); ctx.stroke();
+      }
+      // grains
+      for (const p of particles) {
+        ctx.fillStyle = p.kind === 0 ? `rgba(246,214,150,${p.a})` : `rgba(240,205,140,${p.a * clamp(p.life / 0.25, 0, 1)})`;
+        ctx.beginPath(); ctx.arc(px(p.x), py(p.y), Math.max(0.8, S * 0.0022 * p.r), 0, Math.PI * 2); ctx.fill();
+      }
+      // a little haze where it lands
+      if (flowing || particles.length) {
+        const hz = ctx.createRadialGradient(px(0), py(yLand), 0, px(0), py(yLand), S * 0.05);
+        hz.addColorStop(0, 'rgba(246,214,150,0.22)'); hz.addColorStop(1, 'rgba(246,214,150,0)');
+        ctx.fillStyle = hz; ctx.fillRect(px(-0.06), py(yLand - 0.06), S * 0.12, S * 0.12);
+      }
+    }
+    ctx.restore();
+
+    // --- glass reflections and rim ---
+    ctx.save();
+    ctx.clip(glass);
+    drawReflection(-0.66, 0.30, 0.020);
+    drawReflection(0.78, 0.12, 0.010);
+    ctx.restore();
+
+    ctx.lineWidth = Math.max(1, S * 0.0035);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.stroke(glass);
+    // soft outer sheen
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = Math.max(2, S * 0.012);
+    ctx.strokeStyle = 'rgba(180,200,255,0.05)';
+    ctx.stroke(glass);
+    ctx.restore();
+
+    // --- frame: caps and side posts ---
+    drawPost(-(CAP_W - POST_W * 0.9), 1);
+    drawPost((CAP_W - POST_W * 0.9), 1);
+    drawCap(-0.5 - CAP_H, false);
+    drawCap(0.5, true);
+  }
+
+  function drawSand(path, texShift) {
+    ctx.save();
+    ctx.clip(path);
+    const g = ctx.createLinearGradient(px(-R), 0, px(R), 0);
+    g.addColorStop(0, '#a8742c');
+    g.addColorStop(0.28, '#dcae56');
+    g.addColorStop(0.5, '#ebc272');
+    g.addColorStop(0.75, '#d3a54f');
+    g.addColorStop(1, '#9c6a27');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (grainPattern) {
+      ctx.save();
+      ctx.translate(0, (texShift * S) % 96);
+      ctx.fillStyle = grainPattern; ctx.fillRect(0, -200, W, H + 400);
+      ctx.restore();
+    }
+    // darker toward the glass wall (a hint of volume)
+    const v = ctx.createLinearGradient(px(-R), 0, px(R), 0);
+    v.addColorStop(0, 'rgba(60,30,5,0.35)'); v.addColorStop(0.2, 'rgba(60,30,5,0)');
+    v.addColorStop(0.8, 'rgba(60,30,5,0)'); v.addColorStop(1, 'rgba(60,30,5,0.35)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  function drawReflection(xf, alpha, width) {
+    const n = 100;
+    const g = ctx.createLinearGradient(0, py(-0.5), 0, py(0.5));
+    g.addColorStop(0, `rgba(255,255,255,0)`);
+    g.addColorStop(0.08, `rgba(255,255,255,${alpha})`);
+    g.addColorStop(0.42, `rgba(255,255,255,${alpha * 0.6})`);
+    g.addColorStop(0.5, `rgba(255,255,255,0)`);
+    g.addColorStop(0.58, `rgba(255,255,255,${alpha * 0.6})`);
+    g.addColorStop(0.92, `rgba(255,255,255,${alpha})`);
+    g.addColorStop(1, `rgba(255,255,255,0)`);
+    ctx.strokeStyle = g; ctx.lineWidth = Math.max(1, S * width); ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const y = -0.5 + i / n, x = xf * w(y);
+      if (i === 0) ctx.moveTo(px(x), py(y)); else ctx.lineTo(px(x), py(y));
+    }
+    ctx.stroke();
+  }
+
+  function drawPost(x, dim) {
+    const x0 = px(x - POST_W / 2), wd = POST_W * S;
+    const y0 = py(-0.5 - CAP_H * 0.5), ht = (1 + CAP_H) * S;
+    const g = ctx.createLinearGradient(x0, 0, x0 + wd, 0);
+    g.addColorStop(0, `rgba(58,36,20,${dim})`);
+    g.addColorStop(0.35, `rgba(128,86,48,${dim})`);
+    g.addColorStop(0.55, `rgba(96,62,34,${dim})`);
+    g.addColorStop(1, `rgba(38,22,12,${dim})`);
+    ctx.fillStyle = g;
+    ctx.fill(roundRect(x0, y0, wd, ht, wd / 2));
+  }
+
+  function drawCap(yTop, bottom) {
+    const x0 = px(-CAP_W), wd = 2 * CAP_W * S, y0 = py(yTop), ht = CAP_H * S, r = S * 0.02;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = S * 0.05; ctx.shadowOffsetY = bottom ? S * 0.02 : -S * 0.01;
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + ht);
+    if (bottom) { g.addColorStop(0, '#6a4526'); g.addColorStop(0.35, '#4a2e18'); g.addColorStop(1, '#22130a'); }
+    else        { g.addColorStop(0, '#54351c'); g.addColorStop(0.6, '#3d2512'); g.addColorStop(1, '#5e3c20'); }
+    ctx.fillStyle = g;
+    ctx.fill(roundRect(x0, y0, wd, ht, r));
+    ctx.restore();
+    // brass edge line where the glass meets the wood
+    const yLine = bottom ? y0 + 1 : y0 + ht - 1;
+    const b = ctx.createLinearGradient(x0, 0, x0 + wd, 0);
+    b.addColorStop(0, 'rgba(228,185,98,0)'); b.addColorStop(0.2, 'rgba(228,185,98,0.55)');
+    b.addColorStop(0.8, 'rgba(228,185,98,0.55)'); b.addColorStop(1, 'rgba(228,185,98,0)');
+    ctx.strokeStyle = b; ctx.lineWidth = Math.max(1, S * 0.003);
+    ctx.beginPath(); ctx.moveTo(x0 + r, yLine); ctx.lineTo(x0 + wd - r, yLine); ctx.stroke();
+    // wood grain: a few faint horizontal streaks
+    ctx.save();
+    ctx.clip(roundRect(x0, y0, wd, ht, r));
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 5; i++) {
+      const yy = y0 + ht * (i / 5) + Math.sin(i * 7.3) * ht * 0.04;
+      ctx.beginPath(); ctx.moveTo(x0, yy); ctx.bezierCurveTo(x0 + wd * 0.3, yy - 2, x0 + wd * 0.6, yy + 2, x0 + wd, yy); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ------------------------------------------------------------------
+  // Loop and state machine
+  // ------------------------------------------------------------------
+  function frame(now) {
+    const dt = Math.min(0.05, lastT ? (now - lastT) / 1000 : 0.016);
+    lastT = now;
+    easeLayout(dt);
+
+    if (mode === 'running') {
+      frac = clamp((Date.now() - startedAt) / durationMs, 0, 1);
+      if (frac >= 1) { mode = 'draining'; frac = 1; }
+    }
+    if (mode === 'running' || mode === 'draining') {
+      const yPeak = solveBot(A_TOTAL * frac);
+      stepParticles(dt, yPeak, mode === 'running');
+      if (mode === 'draining' && particles.length === 0) finish(now);
+    } else {
+      particles = [];
+    }
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function start() {
+    const ms = refreshParsed();
+    if (ms === null) { durEl.focus(); durEl.select(); return; }
+    durationMs = ms;
+    try { localStorage.setItem('hourglass.d', durEl.value.trim()); } catch (e) {}
+    if (chimeEl.checked && !audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    panel.classList.add('hidden');
+    doneEl.classList.remove('show');
+    canvas.classList.remove('grabbable');
+    if (mode === 'done') flipThen(beginRun); else beginRun();
+    history.replaceState(null, '', location.pathname + '?d=' + encodeURIComponent(durEl.value.trim()));
+  }
+  function beginRun() {
+    particles = []; spawnAcc = 0; frac = 0;
+    startedAt = Date.now();
+    mode = 'running';
+    requestWakeLock();
+    durEl.blur();
+  }
+  function flipThen(fn) {
+    mode = 'flipping';
+    canvas.classList.remove('notrans');
+    canvas.style.transform = 'rotate(180deg)';
+    let fired = false;
+    const go = () => {
+      if (fired) return; fired = true;
+      canvas.removeEventListener('transitionend', go);
+      frac = 0;                                    // sand is now "up top" again
+      canvas.classList.add('notrans');
+      canvas.style.transform = '';
+      requestAnimationFrame(() => requestAnimationFrame(() => canvas.classList.remove('notrans')));
+      fn();
+    };
+    canvas.addEventListener('transitionend', go);
+    setTimeout(go, 1300);
+  }
+  function finish(now) {
+    mode = 'done'; doneAt = now; frac = 1;
+    releaseWakeLock();
+    doneEl.classList.add('show');
+    canvas.classList.add('grabbable');
+    if (chimeEl.checked) chime();
+  }
+  function reset() {
+    mode = 'ready'; frac = 0; particles = [];
+    releaseWakeLock();
+    doneEl.classList.remove('show');
+    canvas.classList.remove('grabbable');
+    panel.classList.remove('hidden');
+    hideCancel();
+  }
+
+  // ------------------------------------------------------------------
+  // Chime: three soft bell tones
+  // ------------------------------------------------------------------
+  function chime() {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime + 0.05;
+    const master = audioCtx.createGain(); master.gain.value = 0.35; master.connect(audioCtx.destination);
+    [[659.25, 0], [830.61, 0.55], [987.77, 1.1], [1318.5, 1.7]].forEach(([f, dt]) => {
+      const t = t0 + dt;
+      [1, 2.0, 3.01].forEach((h, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = f * h;
+        const peak = i === 0 ? 0.9 : i === 1 ? 0.18 : 0.06;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + (i === 0 ? 3.2 : 1.4));
+        o.connect(g); g.connect(master);
+        o.start(t); o.stop(t + 3.4);
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Wake lock (keeps a phone screen on while the sand runs)
+  // ------------------------------------------------------------------
+  async function requestWakeLock() {
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { wakeLock = null; }
+  }
+  function releaseWakeLock() { try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && mode === 'running' && !wakeLock) requestWakeLock();
+  });
+
+  // ------------------------------------------------------------------
+  // UI wiring
+  // ------------------------------------------------------------------
+  function showCancel() {
+    if (mode !== 'running' && mode !== 'draining') return;
+    cancelBtn.classList.add('show');
+    clearTimeout(cancelTimer);
+    cancelTimer = setTimeout(hideCancel, 2600);
+  }
+  function hideCancel() { cancelBtn.classList.remove('show'); }
+
+  panel.addEventListener('submit', e => { e.preventDefault(); start(); });
+  durEl.addEventListener('input', refreshParsed);
+  document.getElementById('presets').addEventListener('click', e => {
+    const b = e.target.closest('button[data-d]'); if (!b) return;
+    durEl.value = b.dataset.d; refreshParsed();
+  });
+  cancelBtn.addEventListener('click', reset);
+  document.getElementById('again').addEventListener('click', () => {
+    doneEl.classList.remove('show'); panel.classList.remove('hidden'); durEl.focus();
+  });
+  canvas.addEventListener('click', () => { if (mode === 'done') start(); });
+  window.addEventListener('pointermove', showCancel, { passive: true });
+  window.addEventListener('pointerdown', showCancel, { passive: true });
+  window.addEventListener('keydown', e => {
+    if (e.target === durEl && e.key !== 'Escape') return;
+    if (e.key === 'Escape') { if (mode === 'running' || mode === 'draining' || mode === 'done') reset(); else durEl.blur(); }
+    else if (e.key === ' ' || e.key === 'Enter') { if (mode === 'ready' || mode === 'done') { e.preventDefault(); start(); } }
+    else showCancel();
+  });
+  window.addEventListener('resize', resize);
+
+  // initial duration: ?d=…, then last used, then 5 minutes
+  const params = new URLSearchParams(location.search);
+  let initial = params.get('d');
+  if (!initial) { try { initial = localStorage.getItem('hourglass.d'); } catch (e) {} }
+  if (initial && parseDuration(initial) !== null) durEl.value = initial;
+  refreshParsed();
+
+  resize();
+  requestAnimationFrame(frame);
+  if (params.has('go') && parseDuration(durEl.value) !== null) start();
+
+  // For screenshots/tests: ?f=0.37 freezes the sand at a fraction, mid-flow.
+  if (params.has('f')) {
+    const f = clamp(parseFloat(params.get('f')) || 0, 0, 1);
+    panel.classList.add('hidden');
+    mode = 'running'; durationMs = 1e12; startedAt = Date.now() - f * 1e12;
+  }
+})();
+</script>
+</body>
+</html>

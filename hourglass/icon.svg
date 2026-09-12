@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2434"/><stop offset="1" stop-color="#090c13"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b07c30"/><stop offset=".5" stop-color="#ecc474"/><stop offset="1" stop-color="#a26d28"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a4526"/><stop offset="1" stop-color="#2a180c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="150" fill="#e4b962" opacity=".12"/>
+  <path d="M166 118 C166 200 236 226 236 256 C236 286 166 312 166 394 L346 394 C346 312 276 286 276 256 C276 226 346 200 346 118 Z"
+        fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.45)" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M186 148 L326 148 C318 200 276 226 262 244 L250 244 C236 226 194 200 186 148 Z" fill="url(#sand)"/>
+  <path d="M256 268 L256 330" stroke="#ecc474" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+  <path d="M188 388 L256 326 L324 388 Z" fill="url(#sand)"/>
+  <rect x="140" y="92" width="232" height="30" rx="10" fill="url(#wood)"/>
+  <rect x="140" y="390" width="232" height="30" rx="10" fill="url(#wood)"/>
+  <rect x="150" y="118" width="12" height="276" rx="6" fill="#4a2e18"/>
+  <rect x="350" y="118" width="12" height="276" rx="6" fill="#4a2e18"/>
+</svg>
