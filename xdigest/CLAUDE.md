@@ -36,6 +36,13 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
    them to paste secrets into the chat, and never print the file's values.
    - email: they sign up at resend.com **with the address the digests should go to**,
      create a "Sending access" API key → `RESEND_API_KEY`; `EMAIL_TO` is that address.
+     With Resend's shared sender, each day's picks arrive all at once. If they want
+     them spread through the day (and a custom sender), they need a domain verified in
+     Resend (README 3a, "Optional: your own domain"): suggest a subdomain like
+     `digest.<their domain>`, Resend's one-click Cloudflare setup if offered, plus a
+     `_dmarc` TXT `v=DMARC1; p=none;` on the main domain; then set `EMAIL_FROM` and
+     `EMAIL_SPREAD_HOURS`. `check` looks up the DNS records; verification in Resend
+     can lag them by up to an hour.
    - telegram: they create a bot with @BotFather → `TELEGRAM_BOT_TOKEN`, message the
      bot, then you run `uv run xdigest.py chat-id` → `TELEGRAM_CHAT_ID`.
    - signal: follow README 3c with them.

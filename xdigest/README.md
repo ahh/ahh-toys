@@ -83,12 +83,16 @@ Then set up the one you chose:
 ### 3a. Email (via Resend)
 
 [Resend](https://resend.com) sends the emails; the free plan (100/day, 3,000/month) is
-plenty.
+plenty. Each pick is its own email.
+
+**Basic setup (free, ~3 minutes).** The day's picks all arrive together once scoring
+finishes.
 
 1. Sign up at resend.com **with the address you want the digest at**. Without your own
-   domain, Resend's shared sender can only deliver to your account's own address, which
-   is exactly what we want: the API key can't email anyone but you.
-2. Create an API key (API Keys → Create, permission "Sending access").
+   domain, Resend's shared sender (`onboarding@resend.dev`) can only deliver to your
+   account's own address, which is exactly what we want: the API key can't email
+   anyone but you.
+2. Create an API key (API Keys → Create, permission **Sending access**).
 3. Add to the env file:
 
    ```
@@ -96,16 +100,37 @@ plenty.
    EMAIL_TO=you@example.com         # the address you signed up with
    ```
 
-The first few may land in spam or Promotions: mark them "not spam" and add a filter
-for `from:onboarding@resend.dev` (skip inbox and label them, if you like).
+4. In Gmail (or wherever), mark the first one "not spam" and add a filter for
+   `from:onboarding@resend.dev` → never send to spam (and label it, if you like). No
+   one else can send you mail from that address: other Resend users' shared-sender
+   mail only reaches themselves.
 
-With Resend's shared sender, the day's picks all arrive together once scoring
-finishes. **To spread them through the day**, verify a domain you own in Resend
-(Domains → Add, then add the DNS records it shows; a subdomain like
-`digest.example.com` works) and set `EMAIL_FROM="X Digest <digest@digest.example.com>"`
-and optionally `EMAIL_SPREAD_HOURS=12`. Picks are then handed to Resend with scheduled
-send times, so your Mac can sleep afterwards. (Resend refuses scheduled sends from the
-shared sender.)
+**Optional: your own domain (~$10/year), for a trickle through the day and a custom
+sender.** Resend only schedules emails from a domain you've verified; from the shared
+sender, scheduled emails are accepted and then fail, so xdigest sends everything at
+once unless `EMAIL_FROM` is on your own domain.
+
+1. Buy an ordinary domain (.com/.net/.org...). Cloudflare Registrar sells at cost and
+   its DNS works with Resend's one-click setup. Avoid the $1-5 endings (.xyz, .top,
+   ...): renewals cost more and their spam reputation is poor, which matters for email.
+2. In Resend: Domains → Add domain → use a subdomain just for this, e.g.
+   `digest.example.com`. If it offers to configure Cloudflare for you, do that;
+   otherwise add the records it shows in your DNS (in Cloudflare, enter names as shown,
+   e.g. `send.digest`; Cloudflare appends the domain).
+3. Add a DMARC record yourself (the one-click setup skips it): TXT, name `_dmarc` on
+   the main domain, content `v=DMARC1; p=none;`. Gmail trusts senders with DMARC more.
+4. Wait for Resend to show **Verified**. Typically minutes, sometimes up to an hour: if
+   it checked before the records existed, DNS remembers "not found" for a while (30
+   min on Cloudflare). `uv run xdigest.py check` shows whether the records are live.
+5. Add to the env file:
+
+   ```
+   EMAIL_FROM="X Digest <digest@digest.example.com>"
+   EMAIL_SPREAD_HOURS=12            # spread each day's picks over 12 hours
+   ```
+
+   Picks are handed to Resend with scheduled send times, so your Mac can sleep
+   afterwards. Update your mail filter to the new sender.
 
 ### 3b. Telegram
 

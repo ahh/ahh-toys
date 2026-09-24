@@ -72,6 +72,21 @@ def cmd_check(args) -> None:
         except subprocess.CalledProcessError:
             report(False, "data repo reachable", "gh repo create <name> --private --add-readme")
 
+    if transport == "email":
+        sender = os.environ.get("EMAIL_FROM") or "onboarding@resend.dev"
+        domain = sender.rsplit("@", 1)[-1].strip(" >\"'")
+        if domain == "resend.dev":
+            print("  · shared sender: each day's picks arrive at once (own domain needed to spread them)")
+        else:
+            def txt(name: str) -> str:
+                return subprocess.run(["dig", "+short", "TXT", name], capture_output=True, text=True).stdout
+            report("p=" in txt(f"resend._domainkey.{domain}"), f"DKIM record for {domain}",
+                   "add the DNS records Resend shows for this domain")
+            org = ".".join(domain.split(".")[-2:])
+            report("v=DMARC1" in txt(f"_dmarc.{domain}") + txt(f"_dmarc.{org}"), f"DMARC record for {org}",
+                   f"TXT _dmarc.{org} = v=DMARC1; p=none;")
+            print("  · Resend must also show the domain as Verified (can lag DNS by up to an hour)")
+
     print("X login")
     cookies = store.PROFILE_DIR / "Default" / "Cookies"
     logged_in = False
