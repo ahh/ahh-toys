@@ -60,7 +60,7 @@ def _caption(post: dict) -> str:
         qa = q["author"]
         parts.append(f"<blockquote><b>{esc(qa['name'])}</b> @{esc(qa['handle'])}"
                      + (f"\n{esc(q['text'])}" if q.get("text") else "") + "</blockquote>")
-    parts.append(f'<a href="{esc(post["url"])}">↗</a>')
+    parts.append(f'<a href="{esc(post["url"])}">original →</a>')
     return "\n\n".join(parts)
 
 
