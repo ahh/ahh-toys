@@ -10,6 +10,11 @@ whatever you like), and each pick arrives as its own message:
 - **Telegram:** full posts with images, quoted posts, and playable video.
 - **Signal:** rendered post cards (animated GIFs when there's video).
 
+**Setting up with Claude Code:** clone the repo, run `cd ahh-toys/xdigest && claude`,
+and say "set this up". Claude follows [CLAUDE.md](CLAUDE.md), does the setup work, and
+asks you for the few things only you can do (GitHub login, an API key or bot token,
+signing in to X). `uv run xdigest.py check` shows what's done at any point.
+
 **Heads up:** X's terms of service forbid automated scraping. This reads your own feed
 at human speed once a day, but X could still challenge or lock your account. Use it at
 your own risk.
@@ -54,6 +59,8 @@ useful for later training your own ranker) stays in `~/.local/share/xdigest/`.
   "Forgot password" on the X login page)
 
 ## Setup
+
+Run `uv run xdigest.py check` at any point to see which of these steps are done.
 
 ### 1. Code and data repo
 

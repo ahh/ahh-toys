@@ -1,5 +1,6 @@
 """X For You digest: fetch on this Mac -> score in a Claude routine -> email, Telegram, or Signal.
 
+    uv run xdigest.py check          # which setup steps are done (no secrets printed)
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)
     uv run xdigest.py fetch          # scroll For You, save posts + images locally (no push)
@@ -29,6 +30,63 @@ import telegram
 
 def cmd_login(args) -> None:
     fetch.login()
+
+
+TRANSPORT_VARS = {
+    "email": ["RESEND_API_KEY", "EMAIL_TO"],
+    "telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
+    "signal": ["SIGNAL_ACCOUNT"],
+}
+
+
+def cmd_check(args) -> None:
+    """Report which setup steps are done. Never prints secret values."""
+    ok_all = True
+
+    def report(ok: bool, what: str, fix: str = "") -> None:
+        nonlocal ok_all
+        ok_all &= ok
+        print(("  ✓ " if ok else "  ✗ ") + what + ("" if ok or not fix else f"  → {fix}"))
+
+    transport = os.environ.get("DIGEST_TRANSPORT", "telegram")
+    print("tools")
+    for tool in ["uv", "gh", "git"] + (["ffmpeg"] if transport in ("email", "signal") else []) \
+            + (["signal-cli"] if transport == "signal" else []):
+        report(bool(shutil.which(tool)), tool, f"brew install {tool}")
+    report(Path("/Applications/Google Chrome.app").exists(), "Google Chrome", "install Google Chrome")
+    gh_ok = subprocess.run(["gh", "auth", "status"], capture_output=True).returncode == 0 if shutil.which("gh") else False
+    report(gh_ok, "gh logged in", "gh auth login")
+
+    print(f"config ({store.ENV_FILE})")
+    exists = store.ENV_FILE.exists()
+    report(exists, "env file exists", "create it (see README step 2)")
+    if exists:
+        report(oct(store.ENV_FILE.stat().st_mode & 0o777) == "0o600", "env file is private", f"chmod 600 {store.ENV_FILE}")
+    report(transport in TRANSPORT_VARS, f"DIGEST_TRANSPORT={transport}", "email, telegram, or signal")
+    for var in ["XDIGEST_DATA_REPO"] + TRANSPORT_VARS.get(transport, []):
+        report(bool(os.environ.get(var)), f"{var} set", "add it to the env file")
+    if os.environ.get("XDIGEST_DATA_REPO") and gh_ok:
+        try:
+            mailbox._git("ls-remote", mailbox._repo_url())
+            report(True, f"data repo {os.environ['XDIGEST_DATA_REPO']} reachable")
+        except subprocess.CalledProcessError:
+            report(False, "data repo reachable", "gh repo create <name> --private --add-readme")
+
+    print("X login")
+    cookies = store.PROFILE_DIR / "Default" / "Cookies"
+    logged_in = False
+    if cookies.exists():
+        q = subprocess.run(["sqlite3", "-readonly", f"file:{cookies}?immutable=1",
+                            "select count(*) from cookies where host_key like '%x.com' and name='auth_token'"],
+                           capture_output=True, text=True)
+        logged_in = q.stdout.strip() not in ("", "0")
+    report(logged_in, "dedicated Chrome profile has an X session", "uv run xdigest.py login")
+
+    print("schedule")
+    report(SCHEDULE_PLIST.exists(), f"daily job installed ({SCHEDULE_PLIST.name})",
+           "uv run xdigest.py install-schedule --at 07:30")
+    print("  ? scoring routine: can't be checked from here; see ROUTINE_PROMPT.md")
+    print("all set" if ok_all else "some steps remain")
 
 
 def cmd_chat_id(args) -> None:
@@ -167,7 +225,7 @@ def main() -> None:
     store.load_env()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in [("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
+    for name, fn in [("check", cmd_check), ("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
                      ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
     p = sub.add_parser("install-schedule")
