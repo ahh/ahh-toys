@@ -35,6 +35,8 @@ def _open(p, headless: bool) -> BrowserContext:
         str(store.PROFILE_DIR),
         channel="chrome",  # the installed Google Chrome, with its own profile dir
         chromium_sandbox=True,  # Playwright defaults to --no-sandbox; this browser renders strangers' posts
+        # Use the real macOS Keychain so cookies saved by `login` (plain Chrome) decrypt here.
+        ignore_default_args=["--use-mock-keychain"],
         headless=headless,
         viewport={"width": 1100, "height": 1000},
     )
