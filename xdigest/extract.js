@@ -23,12 +23,15 @@
     };
   };
 
-  const imagesIn = (root, exclude) =>
+  // A video's thumbnail can appear both as <video poster> and as an <img>; keep one.
+  const imagesIn = (root, exclude) => [...new Map(
     [...root.querySelectorAll('[data-testid="tweetPhoto"] img, video[poster]')]
       .filter(el => !(exclude && exclude.contains(el)))
       .map(el => el.tagName === 'VIDEO' ? el.poster : el.src)
       .filter(src => src && src.includes('pbs.twimg.com'))
-      .map(src => src.replace(/([?&])name=\w+/, '$1name=small'));
+      .map(src => src.replace(/([?&])name=\w+/, '$1name=small'))
+      .map(src => [src.split('?')[0], src])
+  ).values()];
 
   return [...document.querySelectorAll('article[data-testid="tweet"]')].map(a => {
     const timeLink = a.querySelector('time')?.closest('a');
