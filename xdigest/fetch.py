@@ -94,6 +94,11 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
     with sync_playwright() as p:
         ctx = _open(p, headless=headless)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        # The timeline's own API responses carry video file URLs, which the DOM
+        # (blob: players) does not. Keep them to read after scrolling.
+        timeline_responses = []
+        page.on("response", lambda r: timeline_responses.append(r)
+                if "/graphql/" in r.url and "Timeline" in r.url else None)
         try:
             page.goto("https://x.com/home", wait_until="domcontentloaded")
             try:
@@ -129,6 +134,7 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
                 stats["scrolls"] += 1
                 time.sleep(random.uniform(1.2, 2.8))
                 _check_state(page)
+            _attach_videos(posts, timeline_responses)
         finally:
             ctx.close()
 
@@ -138,6 +144,52 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
         else "stalled"
     )
     return list(posts.values())[:max_posts], stats
+
+
+def _pick_mp4(video_info: dict | None) -> str | None:
+    """Highest-bitrate mp4 under ~1.1 Mbps (Telegram fetches URLs up to 20MB)."""
+    mp4s = sorted((v for v in (video_info or {}).get("variants", [])
+                   if v.get("content_type") == "video/mp4"), key=lambda v: v.get("bitrate", 0))
+    if not mp4s:
+        return None
+    small = [v for v in mp4s if v.get("bitrate", 0) <= 1_100_000]
+    return (small[-1] if small else mp4s[0])["url"]
+
+
+def _attach_videos(posts: dict[str, dict], responses: list) -> None:
+    """Set post["videos"] and post["quote"]["videos"] from captured timeline JSON."""
+    videos: dict[str, list[str]] = {}
+    quoted: dict[str, str] = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            rid, legacy = o.get("rest_id"), o.get("legacy")
+            if rid and isinstance(legacy, dict):
+                for m in (legacy.get("extended_entities") or {}).get("media", []):
+                    url = _pick_mp4(m.get("video_info"))
+                    if url and url not in videos.setdefault(rid, []):
+                        videos[rid].append(url)
+                q = (o.get("quoted_status_result") or {}).get("result") or {}
+                q = q.get("tweet", q)  # TweetWithVisibilityResults wrapper
+                if q.get("rest_id"):
+                    quoted[rid] = q["rest_id"]
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for r in responses:
+        try:
+            walk(r.json())
+        except Exception:
+            continue
+    for pid, post in posts.items():
+        post["videos"] = videos.get(pid, [])
+        if post.get("quote"):
+            qid = quoted.get(pid)
+            post["quote"]["id"] = qid
+            post["quote"]["videos"] = videos.get(qid, []) if qid else []
 
 
 def download_images(posts: list[dict], max_per_post: int = 4) -> int:

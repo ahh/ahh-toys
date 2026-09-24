@@ -60,15 +60,19 @@ def deliver(run_id: str) -> None:
     run_dir = store.RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     out = mailbox.read_outbox(run_id)
+    posts_file = run_dir / "posts.jsonl"
+    local = {p["id"]: p for p in store.read_jsonl(posts_file)} if posts_file.exists() else {}
     if not (run_dir / "sent").exists():
         if out["picks"]:
-            telegram.send_digest(out["picks"])
+            for pick in out["picks"]:
+                if pick["id"] in local:
+                    telegram.send_digest([local[pick["id"]]])
+                else:
+                    telegram.send(telegram.fallback_link(pick["url"]), preview=True)
         else:
             telegram.send(f"📭 X digest: nothing cleared the bar out of {out['run']['n_posts']} posts.")
         (run_dir / "sent").touch()
 
-    posts_file = run_dir / "posts.jsonl"
-    local = {p["id"]: p for p in store.read_jsonl(posts_file)} if posts_file.exists() else {}
     store.write_jsonl(run_dir / "scored.jsonl", out["scored"])
     store.write_jsonl(run_dir / "picks.jsonl", out["picks"])
     store.append_jsonl(store.SCORE_LOG, [
