@@ -28,7 +28,7 @@ body { background: transparent; font: 16px/1.4 -apple-system, BlinkMacSystemFont
 .media { display: grid; gap: 2px; margin-top: 12px; border-radius: 14px; overflow: hidden; }
 .media.n1 { grid-template-columns: 1fr; } .media.n2, .media.n3, .media.n4 { grid-template-columns: 1fr 1fr; }
 .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.media.n1 img { max-height: 400px; object-fit: contain; background: #f2f2f2; }
+.media.n1 img { max-height: 440px; object-fit: contain; background: #f2f2f2; }
 .media.n2 .m, .media.n4 .m { aspect-ratio: 1 / 1; } .media.n3 .m:first-child { grid-row: span 2; }
 .m { position: relative; min-height: 120px; }
 .play { position: absolute; inset: 0; display: grid; place-items: center; }
@@ -39,7 +39,7 @@ body { background: transparent; font: 16px/1.4 -apple-system, BlinkMacSystemFont
 .quote .who .lines { flex-direction: row; gap: 6px; }
 .quote .text { font-size: 15px; }
 .quote .media { margin: 10px -14px -12px; border-radius: 0 0 13px 13px; }
-.quote .media.n1 img { max-height: 260px; }
+.quote .media.n1 img { max-height: 360px; }
 .quote .media .m { min-height: 90px; }
 """
 
@@ -84,9 +84,9 @@ def _images(part: dict) -> list[str]:
     return out
 
 
-def _media(part: dict, slots: list[str]) -> str:
+def _media(part: dict, slots: list[dict]) -> str:
     """Media grid. Video thumbnails get a data-video slot index (their video URL is
-    appended to `slots`) so the animator can overlay the real video there."""
+    appended to `slots` with how to fit it) so the animator can overlay the real video there."""
     videos = list(part.get("videos") or [])
     items = []
     for url in _images(part)[:4]:
@@ -97,18 +97,20 @@ def _media(part: dict, slots: list[str]) -> str:
         if "video_thumb" in url:
             if videos:
                 attr = f' data-video="{len(slots)}"'
-                slots.append(videos.pop(0))
+                slots.append({"url": videos.pop(0), "fit": "cover"})
             else:
                 play = '<div class="play"><span>▶</span></div>'
         items.append(f'<div class="m"{attr}><img src="{src}">{play}</div>')
     if not items:
         return ""
+    if len(items) == 1 and attr:
+        slots[-1]["fit"] = "contain"  # a lone video is shown whole (e.g. vertical phone video)
     return f'<div class="media n{len(items)}">{"".join(items)}</div>'
 
 
-def card_html(post: dict) -> tuple[str, list[str]]:
-    """Card HTML plus the video URLs for its data-video slots, in slot order."""
-    slots: list[str] = []
+def card_html(post: dict) -> tuple[str, list[dict]]:
+    """Card HTML plus {url, fit} for each data-video slot, in slot order."""
+    slots: list[dict] = []
     body = [_who(post["author"])]
     if post.get("text"):
         body.append(f'<div class="text">{_linkify(post["text"])}</div>')
@@ -155,18 +157,22 @@ def render_card(post: dict, out_dir: Path) -> Path:
         return png
 
     inputs = ["-loop", "1", "-i", str(png)]
-    for n, url in enumerate(slots):
+    for n, slot in enumerate(slots):
         path = out_dir / f"v{n}.mp4"
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
+        with urllib.request.urlopen(urllib.request.Request(slot["url"], headers={"User-Agent": "Mozilla/5.0"}),
                                     timeout=120) as resp:
             path.write_bytes(resp.read())
         inputs += ["-i", str(path)]
 
-    # Each video: cover-fit into its box, then overlay; the card image loops underneath.
+    # Each video: fit into its box (whole with black bars, or cropped to fill in a
+    # grid, as X does), then overlay; the card image loops underneath.
     chain, last = [], "[0:v]"
-    for n, b in enumerate(boxes):
-        chain.append(f"[{n + 1}:v]fps={GIF_FPS},scale={b['w']}:{b['h']}:force_original_aspect_ratio=increase,"
-                     f"crop={b['w']}:{b['h']}[v{n}]")
+    for n, (b, slot) in enumerate(zip(boxes, slots)):
+        w, h = b["w"], b["h"]
+        fit = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black"
+               if slot["fit"] == "contain" else
+               f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}")
+        chain.append(f"[{n + 1}:v]fps={GIF_FPS},{fit},setsar=1[v{n}]")
         chain.append(f"{last}[v{n}]overlay={b['x']}:{b['y']}:shortest={1 if n == 0 else 0}[o{n}]")
         last = f"[o{n}]"
     chain.append(f"{last}fps={GIF_FPS},scale={GIF_WIDTH}:-2:flags=lanczos,split[a][b]")
