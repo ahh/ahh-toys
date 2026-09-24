@@ -1,0 +1,11 @@
+[project]
+name = "xdigest"
+version = "0.1.0"
+description = "Daily top-10% digest of the X For You feed, sent to Telegram"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.47",
+]
+
+[tool.uv]
+package = false
