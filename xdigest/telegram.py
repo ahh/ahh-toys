@@ -5,8 +5,6 @@ import os
 import time
 import urllib.request
 
-EMOJI = {"joke": "😂", "meme": "🖼️", "tech": "🛠️", "learning": "💡", "delight": "✨", "other": "📌"}
-
 
 def _api(method: str, payload: dict | None = None) -> dict:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -31,12 +29,11 @@ def send(text: str, preview: bool = False) -> None:
 
 
 def format_pick(pick: dict) -> str:
-    s = pick["scoring"]
-    return f"{EMOJI.get(s['category'], '📌')} {s['score']}/10 · @{pick['author']}\n{s['why']}\n{pick['url']}"
+    # Just the link; Telegram's preview shows the post itself.
+    return pick["url"]
 
 
-def send_digest(picks: list[dict], n_read: int, run_id: str) -> None:
-    send(f"📬 X digest ({run_id[:10]}): {len(picks)} picks from {n_read} posts")
+def send_digest(picks: list[dict]) -> None:
     for post in picks:
         send(format_pick(post), preview=True)
         time.sleep(1)  # Telegram allows ~1 msg/sec per chat

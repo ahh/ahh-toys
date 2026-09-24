@@ -62,7 +62,7 @@ def deliver(run_id: str) -> None:
     out = mailbox.read_outbox(run_id)
     if not (run_dir / "sent").exists():
         if out["picks"]:
-            telegram.send_digest(out["picks"], out["run"]["n_posts"], run_id)
+            telegram.send_digest(out["picks"])
         else:
             telegram.send(f"📭 X digest: nothing cleared the bar out of {out['run']['n_posts']} posts.")
         (run_dir / "sent").touch()
