@@ -9,6 +9,7 @@ History never accumulates; the long-term archive lives in ~/.local/share/xdigest
 """
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -16,8 +17,15 @@ from pathlib import Path
 
 import store
 
-REPO_URL = "https://github.com/ahh/xdigest-data.git"
 ROUTINE_FILES = Path(__file__).parent / "routine"
+
+
+def _repo_url() -> str:
+    """The private data repo, from XDIGEST_DATA_REPO ("owner/name") in the env file."""
+    repo = os.environ.get("XDIGEST_DATA_REPO")
+    if not repo:
+        raise SystemExit("Set XDIGEST_DATA_REPO=owner/name (your private data repo) in ~/.config/xdigest/env")
+    return f"https://github.com/{repo}.git"
 
 
 def _git(*args: str, cwd: Path | None = None) -> str:
@@ -46,17 +54,17 @@ def push_inbox(run_id: str, posts: list[dict]) -> None:
         _git("add", "-A", cwd=root)
         _git("-c", "user.name=xdigest", "-c", "user.email=xdigest@localhost",
              "commit", "-q", "-m", f"inbox {run_id}", cwd=root)
-        _git("push", "-q", "--force", REPO_URL, "inbox:inbox", cwd=root)
+        _git("push", "-q", "--force", _repo_url(), "inbox:inbox", cwd=root)
 
 
 def outbox_ready(run_id: str) -> bool:
-    return bool(_git("ls-remote", REPO_URL, f"refs/heads/{outbox_branch(run_id)}").strip())
+    return bool(_git("ls-remote", _repo_url(), f"refs/heads/{outbox_branch(run_id)}").strip())
 
 
 def pending_outboxes() -> list[str]:
     """Run ids of every outbox branch still on the remote."""
     prefix = "refs/heads/" + outbox_branch("")
-    refs = [line.split("\t")[1] for line in _git("ls-remote", REPO_URL).splitlines()]
+    refs = [line.split("\t")[1] for line in _git("ls-remote", _repo_url()).splitlines()]
     return sorted(r[len(prefix):] for r in refs if r.startswith(prefix))
 
 
@@ -65,7 +73,7 @@ def read_outbox(run_id: str) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         _git("init", "-q", cwd=root)
-        _git("fetch", "-q", "--depth=1", REPO_URL, outbox_branch(run_id), cwd=root)
+        _git("fetch", "-q", "--depth=1", _repo_url(), outbox_branch(run_id), cwd=root)
         _git("checkout", "-q", "FETCH_HEAD", cwd=root)
         return {
             "run": json.loads((root / "out" / "run.json").read_text()),
@@ -75,4 +83,4 @@ def read_outbox(run_id: str) -> dict:
 
 
 def delete_outbox(run_id: str) -> None:
-    _git("push", "-q", REPO_URL, "--delete", outbox_branch(run_id))
+    _git("push", "-q", _repo_url(), "--delete", outbox_branch(run_id))

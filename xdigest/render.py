@@ -17,9 +17,9 @@ CSS = """
 * { box-sizing: border-box; margin: 0; }
 body { background: transparent; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
        color: #0f1419; }
-.card { width: 560px; background: #fff; border-radius: 18px; padding: 16px 18px; }
+.card { width: 560px; background: #fff; padding: 16px 18px; }
 .who { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center;
+.avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; object-fit: cover; display: grid; place-items: center;
           color: #fff; font-weight: 700; font-size: 17px; }
 .name { font-weight: 700; } .handle { color: #536471; }
 .who .lines { display: flex; flex-direction: column; line-height: 1.25; }
@@ -63,6 +63,11 @@ def _linkify(text: str) -> str:
 
 
 def _avatar(author: dict) -> str:
+    """Profile picture if we have one, else a colored initial."""
+    if author.get("avatar"):
+        src = _data_uri(author["avatar"].replace("_normal.", "_x96."))
+        if src:
+            return f'<img class="avatar" src="{src}">'
     color = PALETTE[sum(map(ord, author["handle"])) % len(PALETTE)]
     initial = html.escape((author["name"] or author["handle"] or "?")[0].upper())
     return f'<div class="avatar" style="background:{color}">{initial}</div>'
@@ -143,7 +148,7 @@ def render_card(post: dict, out_dir: Path) -> Path:
             page = browser.new_page(device_scale_factor=SCALE, viewport={"width": 600, "height": 800})
             page.set_content(page_html, wait_until="load")
             card = page.locator(".card")
-            card.screenshot(path=str(png), omit_background=True)
+            card.screenshot(path=str(png))
             origin = card.bounding_box()
             boxes = []
             for i in range(len(slots)):

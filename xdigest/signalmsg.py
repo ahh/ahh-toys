@@ -5,10 +5,13 @@
 
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
+
+import render
 
 
 def _utf16_len(s: str) -> int:
@@ -89,8 +92,12 @@ def _download(urls: list[str], into: Path) -> list[str]:
     return paths
 
 
-def send_post(post: dict) -> None:
-    """One post as one Signal message: media attached, text and quote below."""
+def _short_link(post: dict) -> str:
+    return "x.com/i/status/" + post["url"].rstrip("/").rsplit("/", 1)[-1]
+
+
+def _send_as_text(post: dict) -> None:
+    """Fallback: styled text with the media attached."""
     body = _body(post)
     with tempfile.TemporaryDirectory() as tmp:
         files = _download(_media_urls(post), Path(tmp))
@@ -98,6 +105,22 @@ def send_post(post: dict) -> None:
             _send(body.text, files, body.styles)
         except subprocess.CalledProcessError:
             _send(body.text)  # e.g. an attachment Signal rejected: text + link only
+
+
+def send_post(post: dict) -> None:
+    """One post as one Signal message: a rendered card (GIF if it has video) and a
+    short link to the original."""
+    if not post.get("text") and not post.get("images") and not post.get("quote"):
+        _send(post["url"])  # no local copy of the post, just its link
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            card = render.render_card(post, Path(tmp))
+            _send(_short_link(post), [str(card)])
+            return
+        except Exception as e:
+            print(f"card failed for {post['url']}: {type(e).__name__}: {e}; sending as text", file=sys.stderr)
+    _send_as_text(post)
 
 
 def _receive() -> None:

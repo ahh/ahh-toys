@@ -6,12 +6,19 @@
     uv run xdigest.py push           # push the latest local run to the inbox branch
     uv run xdigest.py deliver        # send + archive any scored runs waiting in the repo
     uv run xdigest.py run            # daily job: deliver leftovers, fetch, push, wait, deliver
+    uv run xdigest.py install-schedule [--at 07:30]   # run `run --headless` daily via launchd
+    uv run xdigest.py uninstall-schedule
 """
 
 import argparse
 import json
+import os
+import plistlib
+import shutil
+import subprocess
 import sys
 import time
+from pathlib import Path
 
 import fetch
 import mailbox
@@ -109,7 +116,7 @@ def cmd_run(args) -> None:
             time.sleep(120)
         deliver(run_id)
     except fetch.LoggedOut:
-        notify.send("🔑 X digest: logged out of X. Run `uv run xdigest.py login` in ahh-toys/xdigest.")
+        notify.send("🔑 X digest: logged out of X. Run `uv run xdigest.py login` in the xdigest folder.")
         sys.exit(2)
     except fetch.Challenged:
         notify.send("🤖 X digest: X wants a human check. Run `uv run xdigest.py login` and clear it.")
@@ -119,12 +126,53 @@ def cmd_run(args) -> None:
         raise
 
 
+SCHEDULE_LABEL = "com.xdigest.daily"
+SCHEDULE_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{SCHEDULE_LABEL}.plist"
+
+
+def cmd_install_schedule(args) -> None:
+    hour, minute = (int(x) for x in args.at.split(":"))
+    uv = shutil.which("uv")
+    if not uv:
+        raise SystemExit("uv not found on PATH")
+    # launchd's default PATH lacks Homebrew; include wherever our tools live.
+    tool_dirs = [str(Path(t).parent) for t in map(shutil.which, ["uv", "gh", "git", "signal-cli", "ffmpeg"]) if t]
+    path = ":".join(dict.fromkeys(tool_dirs + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
+    store.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log = str(store.DATA_DIR / "launchd.log")
+    SCHEDULE_PLIST.parent.mkdir(parents=True, exist_ok=True)
+    SCHEDULE_PLIST.write_bytes(plistlib.dumps({
+        "Label": SCHEDULE_LABEL,
+        "ProgramArguments": [uv, "run", "--directory", str(Path(__file__).resolve().parent),
+                             "xdigest.py", "run", "--headless"],
+        "EnvironmentVariables": {"PATH": path, "PYTHONUNBUFFERED": "1"},
+        # If the Mac is asleep at this time, launchd runs the job when it wakes.
+        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "StandardOutPath": log,
+        "StandardErrorPath": log,
+    }))
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(["launchctl", "bootout", domain, str(SCHEDULE_PLIST)], capture_output=True)
+    subprocess.run(["launchctl", "bootstrap", domain, str(SCHEDULE_PLIST)], check=True)
+    print(f"installed: daily at {hour:02d}:{minute:02d} -> {SCHEDULE_PLIST}\nlog: {log}")
+
+
+def cmd_uninstall_schedule(args) -> None:
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(SCHEDULE_PLIST)], capture_output=True)
+    SCHEDULE_PLIST.unlink(missing_ok=True)
+    print("schedule removed")
+
+
 def main() -> None:
     store.load_env()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in [("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver)]:
+    for name, fn in [("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
+                     ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
+    p = sub.add_parser("install-schedule")
+    p.add_argument("--at", default="07:30", help="local time, HH:MM (default 07:30)")
+    p.set_defaults(fn=cmd_install_schedule)
     for name, fn in [("fetch", cmd_fetch), ("run", cmd_run)]:
         p = sub.add_parser(name)
         p.add_argument("--max-posts", type=int, default=300)

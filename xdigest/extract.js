@@ -23,6 +23,11 @@
     };
   };
 
+  // Profile picture: the first profile_images <img> in root (outside `exclude`).
+  const avatarIn = (root, exclude) =>
+    [...root.querySelectorAll('img[src*="/profile_images/"]')]
+      .find(img => !(exclude && exclude.contains(img)))?.src || null;
+
   // A video's thumbnail can appear both as <video poster> and as an <img>; keep one.
   const imagesIn = (root, exclude) => [...new Map(
     [...root.querySelectorAll('[data-testid="tweetPhoto"] img, video[poster]')]
@@ -52,14 +57,14 @@
     return {
       id: idMatch ? idMatch[2] : null,
       url: idMatch ? `https://x.com/${idMatch[1]}/status/${idMatch[2]}` : null,
-      author: userOf(a.querySelector('[data-testid="User-Name"]')),
+      author: {...userOf(a.querySelector('[data-testid="User-Name"]')), avatar: avatarIn(a, quoteBox)},
       created_at: a.querySelector('time')?.getAttribute('datetime') || null,
       text: mainText?.innerText || '',
       truncated: !!a.querySelector('[data-testid="tweet-text-show-more-link"]'),
       images: imagesIn(a, quoteBox),
       has_video: !!a.querySelector('[data-testid="videoPlayer"]'),
       quote: quoteBox ? {
-        author: userOf(quoteBox.querySelector('[data-testid="User-Name"]')),
+        author: {...userOf(quoteBox.querySelector('[data-testid="User-Name"]')), avatar: avatarIn(quoteBox)},
         text: quoteText?.innerText || '',
         images: imagesIn(quoteBox),
       } : null,

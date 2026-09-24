@@ -1,66 +1,164 @@
 # xdigest
 
-Once a day: scroll my X "For You" feed, have a Claude routine score every post, and
-send the top ~10% to Telegram. Replaces `../twitter-curator`, whose twscrape fetch
-from GitHub Actions stopped working.
+A daily digest of the best ~10% of your X (Twitter) "For You" feed, delivered to
+Telegram or Signal. Your Mac reads the feed, a Claude routine scores every post against
+a rubric you write (no politics, no ragebait, more jokes/tech/delight, or whatever you
+like), and the picks arrive as messages: full posts with images, quoted posts and video
+on Telegram, or rendered post cards (animated when there's video) on Signal.
 
-## Design
+**Heads up:** X's terms of service forbid automated scraping. This reads your own feed
+at human speed once a day, but X could still challenge or lock your account. Use it at
+your own risk.
+
+## How it works
 
 ```
-Mac (launchd, 07:30)                 github.com/ahh/xdigest-data (private)      Claude routine (cloud, hourly 8-12 ET)
-fetch.py: scroll For You  ──push──▶  inbox  (one orphan commit: today's   ──▶  score batches with subagents
-  + download images                          posts, images, SCORING.md,         pick.py: merge, top 10%
-                                             pick.py)
-deliver: Telegram + archive  ◀─pull──  claude/outbox-<run>  (scores, picks) ◀──  push outbox
-         then delete branch
+your Mac (daily, launchd)             github.com/<you>/xdigest-data (private)     Claude routine (cloud, hourly)
+fetch: scroll For You in a     ──▶   inbox  (one commit: today's posts,    ──▶   score every post with
+  dedicated Chrome profile             images, rubric, helper script)             subagents against SCORING.md;
+                                                                                  pick the top 10%
+deliver: Telegram or Signal    ◀──   claude/outbox-<run>  (scores, picks)  ◀──   push outbox
+  + archive scores locally,
+  delete the branch
 ```
 
-Nothing that reads posts can do anything else:
+**Security design.** The feed is written by strangers, so nothing that reads it can do
+anything else:
 
-- **fetch** is plain Playwright code driving the installed Chrome with a dedicated
-  profile logged in to X and nothing else. No model sees the page. It never likes,
-  posts, or follows.
-- **The routine** has no X login, no Telegram token, no claude.ai connectors (cleared,
-  since routines inherit them by default), and no internet beyond git to the data
-  repo. The worst a hostile post can do is inflate its own score.
-- **Telegram** sends happen on the Mac, to the one chat ID in the env file.
+- The fetcher is plain Playwright code driving Chrome with a dedicated profile that is
+  logged in to X and nothing else. No model sees the page; it never likes, posts, or
+  follows. Logging in happens in plain Chrome, by you.
+- The routine has no X login, no messaging credentials, no claude.ai connectors (you
+  remove them, see below), and no internet beyond git to the data repo. The worst a
+  malicious post can do is lie about its own score.
+- Messages are sent from your Mac, to one fixed recipient.
 
-The repo is a mailbox, not an archive: `inbox` is force-pushed as a single orphan
-commit and outbox branches are deleted after delivery, so history never grows. The
-long-term archive (every post, image, and score) lives in `~/.local/share/xdigest/`.
+**Why a GitHub repo in the middle:** routines run in Anthropic's cloud and can't reach
+your Mac, X, or messaging services, but they can use git. The data repo is a mailbox,
+not an archive: the inbox is replaced daily and outbox branches are deleted after
+delivery, so history never grows. The long-term archive (every post, image, and score,
+useful for later training your own ranker) stays in `~/.local/share/xdigest/`.
 
-Tune taste by editing `routine/SCORING.md` (rubric) or `routine/pick.py` (batch
-size, top fraction, minimum score). Both ship with each day's inbox, so the routine
-itself never needs updating.
+## Requirements
+
+- A Mac that's usually on in the morning (if it's asleep, the job runs when it wakes)
+- Google Chrome, [Homebrew](https://brew.sh), and `brew install uv gh ffmpeg`
+  (`ffmpeg` only for Signal)
+- `gh auth login` done (git access to your data repo goes through it)
+- A Claude plan with Claude Code routines (scoring runs on your plan's usage)
+- An X account with a password (if you sign in with Google/Apple, set one via
+  "Forgot password" on the X login page)
 
 ## Setup
 
-```
-cd xdigest && uv sync
-uv run xdigest.py login     # sign in with the X password (not Google) in the window that opens
-```
-
-`~/.config/xdigest/env` (chmod 600):
+### 1. Code and data repo
 
 ```
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...        # `uv run xdigest.py chat-id` after messaging the bot
+git clone https://github.com/ahh/ahh-toys && cd ahh-toys/xdigest && uv sync
+gh repo create xdigest-data --private --add-readme
 ```
 
-Git access to the data repo uses the `gh` CLI's login.
+### 2. Config
 
-Step by step: `fetch --max-posts 40` (local only), `push`, wait for the routine (or
-run it now from claude.ai/code/routines), then `deliver`. `run` does all of it and
-waits up to `--wait-hours` (default 4) for the routine.
+Create `~/.config/xdigest/env` and `chmod 600` it:
 
-Schedule: see `com.ahh.xdigest.plist`. The routine: "xdigest scorer" at
-https://claude.ai/code/routines (cron `0 12-16 * * *` UTC = 8am-noon EDT; it exits
-immediately when the inbox is already scored).
+```
+XDIGEST_DATA_REPO=<your-github-user>/xdigest-data
+DIGEST_TRANSPORT=telegram        # or signal
+```
 
-## Files (outside the repo)
+### 3a. Telegram (easiest)
 
+1. In Telegram, message **@BotFather**, send `/newbot`, and follow the prompts. It gives
+   you a token.
+2. Add `TELEGRAM_BOT_TOKEN=<token>` to the env file.
+3. Send your new bot any message, then run `uv run xdigest.py chat-id` and add
+   `TELEGRAM_CHAT_ID=<the number>` to the env file.
+
+Each pick arrives as one message: author, text, the quoted post as a block quote, and
+images/video inline, with a link to the original.
+
+### 3b. Signal
+
+Signal has no bot API; this uses [signal-cli](https://github.com/AsamK/signal-cli)
+(`brew install signal-cli`). Each pick arrives as a rendered image of the post (a GIF
+when it has video, muted) plus a short link.
+
+**Quick start (your own account, Note to Self).** Link signal-cli as a device on your
+account:
+
+```
+signal-cli link -n "xdigest" | head -1 | qrencode -t ansiutf8   # brew install qrencode
+```
+
+Scan it in Signal → Settings → Linked devices → Link new device, then add
+`SIGNAL_ACCOUNT=<your number, e.g. +15551234567>` to the env file. Digests land in Note
+to Self, but note: (1) messages from your own linked device usually don't notify, and
+(2) that linked device can read and send as you. Unlink it in Signal when you're done
+with it.
+
+**Better: a separate number for the bot**, so digests arrive as normal notifying
+messages and nothing on your Mac can act as you. With a spare number (prepaid SIM):
+
+```
+# solve the captcha at https://signalcaptchas.org/registration/generate.html,
+# copy the "signalcaptcha://..." link it gives you
+signal-cli -a +BOTNUMBER register --captcha 'signalcaptcha://...'
+signal-cli -a +BOTNUMBER verify <code from SMS>
+signal-cli -a +BOTNUMBER setPin <pin>          # stops takeover if the number lapses
+signal-cli -a +BOTNUMBER updateProfile --given-name "X Digest"
+```
+
+Then `SIGNAL_ACCOUNT=+BOTNUMBER` and `SIGNAL_TO=+YOURNUMBER` in the env file, and accept
+the bot's message request on your phone.
+
+### 4. Log in to X
+
+```
+uv run xdigest.py login
+```
+
+Plain Chrome opens on a profile dedicated to this. Sign in with your X password, then
+quit that window (Cmd-Q). It should print `logged in`. macOS may ask whether Chrome can
+use "Chrome Safe Storage" in the Keychain the first time the fetcher runs: choose
+**Always Allow**.
+
+### 5. Create the scoring routine
+
+Follow [ROUTINE_PROMPT.md](ROUTINE_PROMPT.md). Don't skip removing the connectors.
+
+### 6. Try it, then schedule it
+
+```
+uv run xdigest.py fetch --max-posts 40 --headless   # read 40 posts
+uv run xdigest.py push                              # hand them to the routine
+# run the routine now from claude.ai/code/routines, wait for it to finish, then:
+uv run xdigest.py deliver                           # picks arrive in Telegram/Signal
+uv run xdigest.py install-schedule --at 07:30       # daily from now on
+```
+
+The daily job (`run --headless`) does all of that and waits up to 4 hours for the
+routine. Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
+human check, you'll get a message saying so; run `login` again.
+
+## Tuning
+
+- **Taste:** edit `routine/SCORING.md`. It's plain English; the routine reads it fresh
+  every day.
+- **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
+  `routine/pick.py`; `--max-posts` (default 300) for how much of the feed to read.
+- **Card look (Signal):** `render.py`.
+
+## Files
+
+In this folder: `fetch.py` + `extract.js` (reading the feed), `mailbox.py` (the data
+repo), `routine/` (what the routine runs), `render.py` (cards), `telegram.py`,
+`signalmsg.py`, `notify.py` (delivery), `xdigest.py` (commands).
+
+Outside it:
+
+- `~/.config/xdigest/env`: settings and secrets
 - `~/.local/share/xdigest/browser-profile/`: the X login
-- `~/.local/share/xdigest/seen.json`: post ids already processed (30 days)
+- `~/.local/share/xdigest/runs/<run>/`: each day's posts, scores, and picks
 - `~/.local/share/xdigest/images/`: every downloaded image
-- `~/.local/share/xdigest/runs/<run>/`: posts, scored, and picks for each run
 - `~/.local/share/xdigest/scored.jsonl`: every scored post, ever
