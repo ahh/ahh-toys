@@ -1,10 +1,14 @@
 # xdigest
 
-A daily digest of the best ~10% of your X (Twitter) "For You" feed, delivered to
-Telegram or Signal. Your Mac reads the feed, a Claude routine scores every post against
-a rubric you write (no politics, no ragebait, more jokes/tech/delight, or whatever you
-like), and the picks arrive as messages: full posts with images, quoted posts and video
-on Telegram, or rendered post cards (animated when there's video) on Signal.
+A daily digest of the best ~10% of your X (Twitter) "For You" feed, delivered by
+email, Telegram, or Signal. Your Mac reads the feed, a Claude routine scores every post
+against a rubric you write (no politics, no ragebait, more jokes/tech/delight, or
+whatever you like), and each pick arrives as its own message:
+
+- **Email:** one email per post, spread through the day: text, quoted post, photos,
+  and videos as muted GIFs linking to X. Read state syncs across your devices.
+- **Telegram:** full posts with images, quoted posts, and playable video.
+- **Signal:** rendered post cards (animated GIFs when there's video).
 
 **Heads up:** X's terms of service forbid automated scraping. This reads your own feed
 at human speed once a day, but X could still challenge or lock your account. Use it at
@@ -17,7 +21,7 @@ your Mac (daily, launchd)             github.com/<you>/xdigest-data (private)   
 fetch: scroll For You in a     ──▶   inbox  (one commit: today's posts,    ──▶   score every post with
   dedicated Chrome profile             images, rubric, helper script)             subagents against SCORING.md;
                                                                                   pick the top 10%
-deliver: Telegram or Signal    ◀──   claude/outbox-<run>  (scores, picks)  ◀──   push outbox
+deliver: email/Telegram/Signal ◀──   claude/outbox-<run>  (scores, picks)  ◀──   push outbox
   + archive scores locally,
   delete the branch
 ```
@@ -43,7 +47,7 @@ useful for later training your own ranker) stays in `~/.local/share/xdigest/`.
 
 - A Mac that's usually on in the morning (if it's asleep, the job runs when it wakes)
 - Google Chrome, [Homebrew](https://brew.sh), and `brew install uv gh ffmpeg`
-  (`ffmpeg` only for Signal)
+  (`ffmpeg` is for video GIFs in email and Signal)
 - `gh auth login` done (git access to your data repo goes through it)
 - A Claude plan with Claude Code routines (scoring runs on your plan's usage)
 - An X account with a password (if you sign in with Google/Apple, set one via
@@ -64,10 +68,33 @@ Create `~/.config/xdigest/env` and `chmod 600` it:
 
 ```
 XDIGEST_DATA_REPO=<your-github-user>/xdigest-data
-DIGEST_TRANSPORT=telegram        # or signal
+DIGEST_TRANSPORT=email          # or telegram, or signal
 ```
 
-### 3a. Telegram (easiest)
+Then set up the one you chose:
+
+### 3a. Email (via Resend)
+
+[Resend](https://resend.com) sends the emails; the free plan (100/day, 3,000/month) is
+plenty.
+
+1. Sign up at resend.com **with the address you want the digest at**. Without your own
+   domain, Resend's shared sender can only deliver to your account's own address, which
+   is exactly what we want: the API key can't email anyone but you.
+2. Create an API key (API Keys → Create, permission "Sending access").
+3. Add to the env file:
+
+   ```
+   RESEND_API_KEY=re_...
+   EMAIL_TO=you@example.com         # the address you signed up with
+   EMAIL_SPREAD_HOURS=12            # optional: spread the day's picks over N hours (0 = all at once)
+   ```
+
+The first few may land in spam or Promotions: mark them "not spam" and add a filter
+for `from:onboarding@resend.dev` (skip inbox and label them, if you like). Picks are
+handed to Resend with scheduled send times, so your Mac can sleep afterwards.
+
+### 3b. Telegram
 
 1. In Telegram, message **@BotFather**, send `/newbot`, and follow the prompts. It gives
    you a token.
@@ -78,7 +105,7 @@ DIGEST_TRANSPORT=telegram        # or signal
 Each pick arrives as one message: author, text, the quoted post as a block quote, and
 images/video inline, with a link to the original.
 
-### 3b. Signal
+### 3c. Signal
 
 Signal has no bot API; this uses [signal-cli](https://github.com/AsamK/signal-cli)
 (`brew install signal-cli`). Each pick arrives as a rendered image of the post (a GIF
@@ -133,7 +160,7 @@ Follow [ROUTINE_PROMPT.md](ROUTINE_PROMPT.md). Don't skip removing the connector
 uv run xdigest.py fetch --max-posts 40 --headless   # read 40 posts
 uv run xdigest.py push                              # hand them to the routine
 # run the routine now from claude.ai/code/routines, wait for it to finish, then:
-uv run xdigest.py deliver                           # picks arrive in Telegram/Signal
+uv run xdigest.py deliver                           # picks arrive by email/Telegram/Signal
 uv run xdigest.py install-schedule --at 07:30       # daily from now on
 ```
 
@@ -147,13 +174,13 @@ human check, you'll get a message saying so; run `login` again.
   every day.
 - **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
   `routine/pick.py`; `--max-posts` (default 300) for how much of the feed to read.
-- **Card look (Signal):** `render.py`.
+- **Look:** `emailmsg.py` (email), `telegram.py`, `render.py` (Signal cards).
 
 ## Files
 
 In this folder: `fetch.py` + `extract.js` (reading the feed), `mailbox.py` (the data
 repo), `routine/` (what the routine runs), `render.py` (cards), `telegram.py`,
-`signalmsg.py`, `notify.py` (delivery), `xdigest.py` (commands).
+`signalmsg.py`, `emailmsg.py`, `notify.py` (delivery), `xdigest.py` (commands).
 
 Outside it:
 

@@ -1,4 +1,4 @@
-"""X For You digest: fetch on this Mac -> score in a Claude routine -> Telegram or Signal.
+"""X For You digest: fetch on this Mac -> score in a Claude routine -> email, Telegram, or Signal.
 
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)

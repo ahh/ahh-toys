@@ -1,13 +1,20 @@
-"""Route digests and status messages to Telegram or Signal (DIGEST_TRANSPORT)."""
+"""Route digests and status messages to the chosen transport (DIGEST_TRANSPORT):
+telegram (default), signal, or email."""
 
 import os
 
+import emailmsg
 import signalmsg
 import telegram
 
+TRANSPORTS = {"telegram": telegram, "signal": signalmsg, "email": emailmsg}
+
 
 def _transport():
-    return signalmsg if os.environ.get("DIGEST_TRANSPORT") == "signal" else telegram
+    name = os.environ.get("DIGEST_TRANSPORT", "telegram")
+    if name not in TRANSPORTS:
+        raise SystemExit(f"DIGEST_TRANSPORT must be one of {', '.join(TRANSPORTS)}, not {name!r}")
+    return TRANSPORTS[name]
 
 
 def send(text: str) -> None:

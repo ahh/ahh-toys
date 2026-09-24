@@ -131,6 +131,22 @@ def card_html(post: dict) -> tuple[str, list[dict]]:
     return page, slots
 
 
+def video_gif(url: str, out: Path, box: int = 480, fps: int = 10, seconds: int = 10) -> Path:
+    """A short muted GIF of a video (first `seconds`), fitted within box x box, for
+    places that can't play video."""
+    mp4 = out.with_suffix(".mp4")
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
+                                timeout=120) as resp:
+        mp4.write_bytes(resp.read())
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-t", str(seconds), "-i", str(mp4), "-filter_complex",
+                    f"fps={fps},scale={box}:{box}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                    "split[a][b];[a]palettegen=stats_mode=diff[p];"
+                    "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "-loop", "0", str(out)], check=True)
+    mp4.unlink(missing_ok=True)
+    return out
+
+
 SCALE = 2           # render resolution multiplier
 GIF_WIDTH = 600     # output width of animated cards
 GIF_FPS = 10
