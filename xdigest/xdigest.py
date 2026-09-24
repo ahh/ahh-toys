@@ -1,4 +1,4 @@
-"""X For You digest: fetch on this Mac -> score in a Claude routine -> Telegram.
+"""X For You digest: fetch on this Mac -> score in a Claude routine -> Telegram or Signal.
 
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)
@@ -15,6 +15,7 @@ import time
 
 import fetch
 import mailbox
+import notify
 import store
 import telegram
 
@@ -56,7 +57,7 @@ def cmd_push(args, run_id: str | None = None, posts: list[dict] | None = None) -
 
 
 def deliver(run_id: str) -> None:
-    """Send one scored run to Telegram, archive its scores locally, delete the branch."""
+    """Send one scored run, archive its scores locally, delete the branch."""
     run_dir = store.RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     out = mailbox.read_outbox(run_id)
@@ -64,13 +65,11 @@ def deliver(run_id: str) -> None:
     local = {p["id"]: p for p in store.read_jsonl(posts_file)} if posts_file.exists() else {}
     if not (run_dir / "sent").exists():
         if out["picks"]:
-            for pick in out["picks"]:
-                if pick["id"] in local:
-                    telegram.send_digest([local[pick["id"]]])
-                else:
-                    telegram.send(telegram.fallback_link(pick["url"]), preview=True)
+            # Full post from the local fetch; bare link if this Mac doesn't have it.
+            notify.send_posts([local.get(pick["id"]) or {"author": {"name": "", "handle": pick["author"]},
+                                                        "url": pick["url"]} for pick in out["picks"]])
         else:
-            telegram.send(f"📭 X digest: nothing cleared the bar out of {out['run']['n_posts']} posts.")
+            notify.send(f"📭 X digest: nothing cleared the bar out of {out['run']['n_posts']} posts.")
         (run_dir / "sent").touch()
 
     store.write_jsonl(run_dir / "scored.jsonl", out["scored"])
@@ -97,26 +96,26 @@ def cmd_run(args) -> None:
         cmd_deliver(args)  # anything the routine finished after a previous run gave up waiting
         run_id, posts = cmd_fetch(args)
         if not posts:
-            telegram.send("📭 X digest: no new posts in For You today.")
+            notify.send("📭 X digest: no new posts in For You today.")
             return
         cmd_push(args, run_id, posts)
 
         deadline = time.time() + args.wait_hours * 3600
         while not mailbox.outbox_ready(run_id):
             if time.time() > deadline:
-                telegram.send(f"⏳ X digest: routine hasn't scored run {run_id} after {args.wait_hours}h. "
-                              "It'll be delivered on the next run if it shows up.")
+                notify.send(f"⏳ X digest: routine hasn't scored run {run_id} after {args.wait_hours}h. "
+                            "It'll be delivered on the next run if it shows up.")
                 sys.exit(4)
             time.sleep(120)
         deliver(run_id)
     except fetch.LoggedOut:
-        telegram.send("🔑 X digest: logged out of X. Run `uv run xdigest.py login` in ahh-toys/xdigest.")
+        notify.send("🔑 X digest: logged out of X. Run `uv run xdigest.py login` in ahh-toys/xdigest.")
         sys.exit(2)
     except fetch.Challenged:
-        telegram.send("🤖 X digest: X wants a human check. Run `uv run xdigest.py login` and clear it.")
+        notify.send("🤖 X digest: X wants a human check. Run `uv run xdigest.py login` and clear it.")
         sys.exit(3)
     except Exception as e:
-        telegram.send(f"💥 X digest failed: {type(e).__name__}: {str(e)[:200]}")
+        notify.send(f"💥 X digest failed: {type(e).__name__}: {str(e)[:200]}")
         raise
 
 
