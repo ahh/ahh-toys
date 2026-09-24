@@ -29,8 +29,9 @@ def send(text: str, preview: bool = False) -> None:
 
 
 def format_pick(pick: dict) -> str:
-    # Just the link; Telegram's preview shows the post itself.
-    return pick["url"]
+    # Just the link. fxtwitter (fixupx.com, open source) serves previews that include
+    # quoted posts and playable video; x.com's own Telegram preview shows neither.
+    return pick["url"].replace("https://x.com/", "https://fixupx.com/", 1)
 
 
 def send_digest(picks: list[dict]) -> None:
