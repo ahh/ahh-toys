@@ -6,6 +6,7 @@ sees page content while this browser is open.
 """
 
 import random
+import subprocess
 import time
 import urllib.request
 from pathlib import Path
@@ -33,6 +34,7 @@ def _open(p, headless: bool) -> BrowserContext:
     return p.chromium.launch_persistent_context(
         str(store.PROFILE_DIR),
         channel="chrome",  # the installed Google Chrome, with its own profile dir
+        chromium_sandbox=True,  # Playwright defaults to --no-sandbox; this browser renders strangers' posts
         headless=headless,
         viewport={"width": 1100, "height": 1000},
     )
@@ -46,17 +48,30 @@ def _check_state(page: Page) -> None:
         raise LoggedOut(url)
 
 
-def login(timeout_s: int = 600) -> None:
-    """Open a visible window at the login page and wait for the human to sign in."""
+def login() -> None:
+    """Open plain (non-automated) Chrome on the dedicated profile so a human can sign
+    in normally; the daily fetch then reuses the saved session."""
+    store.PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    print("Log in to X in the Chrome window that opens (X password, not Google),\n"
+          "then quit that Chrome window (Cmd-Q) to continue.")
+    subprocess.run(["open", "-n", "-W", "-a", "Google Chrome", "--args",
+                    f"--user-data-dir={store.PROFILE_DIR}", "--no-first-run", "https://x.com/login"],
+                   check=True)
+    print("logged in" if is_logged_in() else "NOT logged in: try again later")
+
+
+def is_logged_in() -> bool:
     with sync_playwright() as p:
-        ctx = _open(p, headless=False)
+        ctx = _open(p, headless=True)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto("https://x.com/login")
-        print("Log in to X in the Chrome window that just opened (use your X password, not Google).")
-        page.wait_for_selector(LOGGED_IN_SELECTOR, timeout=timeout_s * 1000)
-        print("Logged in. The session is saved in", store.PROFILE_DIR)
-        time.sleep(2)
-        ctx.close()
+        try:
+            page.goto("https://x.com/home", wait_until="domcontentloaded")
+            page.wait_for_selector(f'{LOGGED_IN_SELECTOR}, {LOGGED_OUT_SELECTOR}', timeout=30_000)
+            return page.locator(LOGGED_IN_SELECTOR).count() > 0
+        except Exception:
+            return False
+        finally:
+            ctx.close()
 
 
 def _select_for_you(page: Page) -> None:
