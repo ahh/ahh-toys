@@ -1,9 +1,10 @@
 """Email each post to one fixed address via Resend (https://resend.com).
 
 Env: RESEND_API_KEY, EMAIL_TO; optional EMAIL_FROM (default Resend's shared test
-sender, which on the free plan can only deliver to your own account's address) and
-EMAIL_SPREAD_HOURS (default 12: space the day's posts out over that many hours using
-Resend's scheduled sending; 0 sends them all at once).
+sender, which can only deliver to your own account's address) and EMAIL_SPREAD_HOURS
+(default 12: space the day's posts out over that many hours using Resend's scheduled
+sending, which requires EMAIL_FROM on a domain you've verified in Resend; with the
+shared sender everything is sent at once).
 """
 
 import base64
@@ -181,6 +182,12 @@ def send_post(post: dict, send_at: datetime | None = None) -> None:
 
 def send_digest(posts: list[dict]) -> None:
     spread = float(os.environ.get("EMAIL_SPREAD_HOURS", "12"))
+    if spread and "@resend.dev" in (os.environ.get("EMAIL_FROM") or DEFAULT_FROM):
+        # Resend only schedules mail from a verified domain; from the shared test sender
+        # scheduled emails are accepted by the API and then fail. Send them all now.
+        print("EMAIL_SPREAD_HOURS needs a verified sending domain (EMAIL_FROM); sending all now",
+              file=sys.stderr)
+        spread = 0
     start = datetime.now(timezone.utc)
     step = timedelta(hours=spread) / max(len(posts), 1)
     for i, post in enumerate(posts):

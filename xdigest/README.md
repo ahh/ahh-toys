@@ -94,12 +94,18 @@ plenty.
    ```
    RESEND_API_KEY=re_...
    EMAIL_TO=you@example.com         # the address you signed up with
-   EMAIL_SPREAD_HOURS=12            # optional: spread the day's picks over N hours (0 = all at once)
    ```
 
 The first few may land in spam or Promotions: mark them "not spam" and add a filter
-for `from:onboarding@resend.dev` (skip inbox and label them, if you like). Picks are
-handed to Resend with scheduled send times, so your Mac can sleep afterwards.
+for `from:onboarding@resend.dev` (skip inbox and label them, if you like).
+
+With Resend's shared sender, the day's picks all arrive together once scoring
+finishes. **To spread them through the day**, verify a domain you own in Resend
+(Domains → Add, then add the DNS records it shows; a subdomain like
+`digest.example.com` works) and set `EMAIL_FROM="X Digest <digest@digest.example.com>"`
+and optionally `EMAIL_SPREAD_HOURS=12`. Picks are then handed to Resend with scheduled
+send times, so your Mac can sleep afterwards. (Resend refuses scheduled sends from the
+shared sender.)
 
 ### 3b. Telegram
 
