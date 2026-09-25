@@ -53,6 +53,12 @@ def describe(post: dict) -> str:
                      f"<quoted_text>\n{q['text'] or '(no text)'}\n</quoted_text>")
     if post.get("card"):
         lines.append(f"Link card:\n<card>\n{post['card']['text']}\n</card>")
+    thread = post.get("thread") or []
+    if thread:
+        lines.append(f"This post starts a thread of {len(thread) + 1} posts by the same author. "
+                     "Score the thread as a whole. The rest of it:")
+        for n, part in enumerate(thread, 2):
+            lines.append(f"<thread_part {n}>\n{part.get('text') or '(no text)'}\n</thread_part>")
     m = post.get("metrics") or {}
     if m:
         lines.append("Engagement: " + ", ".join(f"{v} {k}" for k, v in m.items()))

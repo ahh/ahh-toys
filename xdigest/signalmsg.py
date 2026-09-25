@@ -12,6 +12,7 @@ import urllib.request
 from pathlib import Path
 
 import render
+import xdata
 
 
 def _utf16_len(s: str) -> int:
@@ -64,6 +65,8 @@ def _body(post: dict) -> _Text:
         if q.get("text"):
             t.add("\n")
             t.add(q["text"], "ITALIC")
+    for n, part in enumerate(post.get("thread") or [], 2):
+        t.add("\n\n" + xdata.numbered(n, part.get("text")))
     t.add(f"\n\noriginal → {post['url']}")
     return t
 

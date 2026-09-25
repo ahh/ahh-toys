@@ -1,9 +1,10 @@
 """Scroll the For You timeline in a dedicated Chrome profile and extract posts.
 
 This is deliberately dumb code: it navigates to x.com/home, scrolls, and reads
-the DOM. The only things it ever clicks are the "For you" tab and X's own "Retry"
-button when the feed stops loading. No model ever sees page content while this
-browser is open.
+the DOM plus the API responses the page itself loads. The only things it ever clicks
+are the "For you" tab and X's own "Retry" button when the feed stops loading; the
+only other pages it opens are threads' own post pages, to read the rest of a thread.
+No model ever sees page content while this browser is open.
 """
 
 import random
@@ -16,6 +17,7 @@ from pathlib import Path
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 import store
+import xdata
 
 EXTRACT_JS = (Path(__file__).parent / "extract.js").read_text()
 
@@ -31,6 +33,10 @@ STALL_SCREENSHOT = store.DATA_DIR / "last-stall.png"
 # Pace like a reader: pause about this long (seconds, randomized) per new post read,
 # on top of the pause after each scroll. Spaces out X's feed requests.
 READ_PAUSE = (0.6, 1.4)
+
+# Threads: open at most this many per run in a second tab to read the whole thread.
+MAX_THREADS = 10
+MAX_THREAD_POSTS = 25
 
 
 class LoggedOut(Exception):
@@ -156,7 +162,20 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
                 stats["scrolls"] += 1
                 time.sleep(random.uniform(1.2, 2.8))
                 _check_state(page)
-            _attach_videos(posts, timeline_responses)
+            records: dict[str, dict] = {}
+            for r in timeline_responses:
+                try:
+                    xdata.collect(r.json(), records)
+                except Exception:
+                    continue
+            # Extras: if X's data format shifts, keep the run and skip them.
+            for step in (lambda: _enrich(posts, records), lambda: _expand_threads(ctx, posts, records, stats)):
+                try:
+                    step()
+                except (LoggedOut, Challenged):
+                    raise
+                except Exception as e:
+                    stats.setdefault("extras_errors", []).append(f"{type(e).__name__}: {e}"[:200])
         finally:
             ctx.close()
 
@@ -205,59 +224,91 @@ def _record_stall(page: Page, stats: dict) -> None:
         stats["stall"]["screenshot"] = None
 
 
-def _pick_mp4(video_info: dict | None) -> str | None:
-    """Highest-bitrate mp4 under ~1.1 Mbps (Telegram fetches URLs up to 20MB)."""
-    mp4s = sorted((v for v in (video_info or {}).get("variants", [])
-                   if v.get("content_type") == "video/mp4"), key=lambda v: v.get("bitrate", 0))
-    if not mp4s:
-        return None
-    small = [v for v in mp4s if v.get("bitrate", 0) <= 1_100_000]
-    return (small[-1] if small else mp4s[0])["url"]
-
-
-def _attach_videos(posts: dict[str, dict], responses: list) -> None:
-    """Set post["videos"] and post["quote"]["videos"] from captured timeline JSON."""
-    videos: dict[str, list[str]] = {}
-    quoted: dict[str, str] = {}
-
-    def walk(o):
-        if isinstance(o, dict):
-            rid, legacy = o.get("rest_id"), o.get("legacy")
-            if rid and isinstance(legacy, dict):
-                for m in (legacy.get("extended_entities") or {}).get("media", []):
-                    url = _pick_mp4(m.get("video_info"))
-                    if url and url not in videos.setdefault(rid, []):
-                        videos[rid].append(url)
-                q = (o.get("quoted_status_result") or {}).get("result") or {}
-                q = q.get("tweet", q)  # TweetWithVisibilityResults wrapper
-                if q.get("rest_id"):
-                    quoted[rid] = q["rest_id"]
-            for v in o.values():
-                walk(v)
-        elif isinstance(o, list):
-            for v in o:
-                walk(v)
-
-    for r in responses:
-        try:
-            walk(r.json())
-        except Exception:
-            continue
+def _enrich(posts: dict[str, dict], records: dict[str, dict]) -> None:
+    """Fill in what the DOM lacks from X's API data: video files, and the full text of
+    long posts (the DOM shows them cut off at "Show more")."""
     for pid, post in posts.items():
-        post["videos"] = videos.get(pid, [])
-        if post.get("quote"):
-            qid = quoted.get(pid)
-            post["quote"]["id"] = qid
-            post["quote"]["videos"] = videos.get(qid, []) if qid else []
+        rec = records.get(pid) or {}
+        post["videos"] = rec.get("videos", [])
+        if rec.get("is_long") and rec.get("text"):
+            post["text"], post["truncated"] = rec["text"], False
+        q = post.get("quote")
+        if q:
+            qrec = records.get(rec.get("quoted_id") or "") or {}
+            q["id"] = qrec.get("id")
+            q["videos"] = qrec.get("videos", [])
+            if qrec.get("is_long") and qrec.get("text"):
+                q["text"] = qrec["text"]
 
 
-def download_images(posts: list[dict], max_per_post: int = 4) -> int:
+def _thread_records(ctx: BrowserContext, root_id: str) -> dict[str, dict]:
+    """Open the thread's post page in a second tab and parse what it loads."""
+    responses = []
+    page = ctx.new_page()
+    page.on("response", lambda r: responses.append(r) if "/graphql/" in r.url and "TweetDetail" in r.url else None)
+    records: dict[str, dict] = {}
+    try:
+        page.goto(f"https://x.com/i/status/{root_id}", wait_until="domcontentloaded")
+        deadline = time.time() + 20
+        while not responses and time.time() < deadline:
+            time.sleep(0.5)
+        time.sleep(random.uniform(2, 4))
+        _check_state(page)
+        for r in responses:
+            try:
+                xdata.collect(r.json(), records)
+            except Exception:
+                continue
+    finally:
+        page.close()
+    return records
+
+
+def _expand_threads(ctx: BrowserContext, posts: dict[str, dict], records: dict[str, dict], stats: dict) -> None:
+    """Turn each self-thread in the feed into one post carrying the whole thread.
+    Feed posts from the same thread are merged; a mid-thread post is replaced by the
+    thread from its start."""
+    groups: dict[str, list[str]] = {}
+    for pid, post in posts.items():
+        root = xdata.thread_root(records.get(pid), post.get("text", ""))
+        if root:
+            groups.setdefault(root, []).append(pid)
+    stats["threads"] = 0
+    seen = store.load_seen()
+    for root, members in list(groups.items())[:MAX_THREADS]:
+        time.sleep(random.uniform(3, 6))
+        detail = _thread_records(ctx, root)
+        chain = xdata.thread_chain(detail, root, MAX_THREAD_POSTS)
+        if len(chain) < 2:
+            continue
+        head = chain[0]
+        base = posts.get(root)
+        if base is None:
+            if root in seen:  # already delivered this thread from its start
+                continue
+            base = posts[members[0]]
+            base.update(id=head["id"], url=head["url"], text=head["text"], truncated=False,
+                        images=head["images"], videos=head["videos"], has_video=bool(head["videos"]),
+                        quote=None, is_reply=False)
+            if head["author"]["handle"]:
+                base["author"] = {**base["author"], **{k: v for k, v in head["author"].items() if v}}
+        for m in members:
+            posts.pop(m, None)
+        base["thread"] = [{"id": r["id"], "text": r["text"], "images": r["images"], "videos": r["videos"]}
+                          for r in chain[1:]]
+        base["thread_ids"] = [r["id"] for r in chain]
+        posts[head["id"]] = base
+        stats["threads"] += 1
+
+
+def download_images(posts: list[dict], max_per_post: int = 12) -> int:
     """Save each post's images (own + quoted) under IMAGES_DIR; record filenames
     on the post as `image_files`. Plain HTTP, no browser session involved."""
     store.IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     saved = 0
     for post in posts:
-        urls = post.get("images", []) + ((post.get("quote") or {}).get("images") or [])
+        urls = post.get("images", []) + ((post.get("quote") or {}).get("images") or []) + \
+            [u for part in post.get("thread") or [] for u in part.get("images") or []]
         post["image_files"] = []
         for n, url in enumerate(urls[:max_per_post]):
             name = f"{post['id']}-{n}.jpg"
@@ -279,5 +330,6 @@ def mark_seen(posts: list[dict]) -> None:
     seen = store.load_seen()
     ts = store.now().isoformat()
     for post in posts:
-        seen.setdefault(post["id"], ts)
+        for pid in post.get("thread_ids") or [post["id"]]:
+            seen.setdefault(pid, ts)
     store.save_seen(seen)

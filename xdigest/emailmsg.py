@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import render
+import xdata
 
 API = "https://api.resend.com/emails"
 DEFAULT_FROM = "X Digest <onboarding@resend.dev>"
@@ -154,6 +155,12 @@ def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
         qparts.append(_media(q, url, tmp, attachments))
         parts.append(f'<div style="margin-top:12px;border:1px solid #cfd9de;border-radius:14px;'
                      f'padding:12px 14px">{"".join(qparts)}</div>')
+    for n, part in enumerate(post.get("thread") or [], 2):
+        piece = [f'<div style="font:12px {FONT};color:#536471;margin-bottom:4px">{n}/{len(post["thread"]) + 1}</div>']
+        if part.get("text"):
+            piece.append(f'<div style="font:17px/1.45 {FONT};color:#0f1419">{_linkify(part["text"])}</div>')
+        piece.append(_media(part, url, tmp, attachments))
+        parts.append(f'<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eff3f4">{"".join(piece)}</div>')
     parts.append(f'<div style="margin-top:14px;font:14px {FONT}"><a href="{html.escape(url)}" '
                  f'style="color:#1d9bf0;text-decoration:none">original →</a></div>')
     return (f'<div style="max-width:560px;margin:0 auto;padding:4px 0">{"".join(parts)}</div>')
@@ -163,6 +170,8 @@ def _subject(post: dict) -> str:
     text = " ".join((post.get("text") or (post.get("quote") or {}).get("text") or "").split())
     snippet = text[:80] + ("…" if len(text) > 80 else "")
     subject = f'{post["author"]["name"]}: {snippet}' if snippet else post["author"]["name"]
+    if post.get("thread"):
+        subject = f'🧵 {subject}'
     return f"[not picked] {subject}" if post.get("note") else subject
 
 
@@ -172,6 +181,8 @@ def _plain(post: dict) -> str:
     q = post.get("quote")
     if q:
         lines += ["", f'> {q["author"]["name"]} @{q["author"]["handle"]}', "> " + (q.get("text") or "")]
+    for n, part in enumerate(post.get("thread") or [], 2):
+        lines += ["", xdata.numbered(n, part.get("text"))]
     return "\n".join(lines + ["", post["url"]])
 
 

@@ -6,6 +6,8 @@ import os
 import time
 import urllib.request
 
+import xdata
+
 
 def _api(method: str, payload: dict | None = None) -> dict:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -61,6 +63,8 @@ def _caption(post: dict) -> str:
         qa = q["author"]
         parts.append(f"<blockquote><b>{esc(qa['name'])}</b> @{esc(qa['handle'])}"
                      + (f"\n{esc(q['text'])}" if q.get("text") else "") + "</blockquote>")
+    for n, part in enumerate(post.get("thread") or [], 2):
+        parts.append(esc(xdata.numbered(n, part.get("text"))))
     parts.append(f'<a href="{esc(post["url"])}">original →</a>')
     return "\n\n".join(parts)
 
@@ -70,6 +74,8 @@ def send_post(post: dict) -> None:
     chat = os.environ["TELEGRAM_CHAT_ID"]
     caption, media = _caption(post), _media(post)
     try:
+        if len(caption) > 4000:  # message limit is 4096
+            caption = caption[:3990].rsplit("\n", 1)[0]
         if media and len(caption) > 1024:  # caption limit; send text separately
             _api("sendMessage", {"chat_id": chat, "text": caption, "parse_mode": "HTML",
                                  "link_preview_options": {"is_disabled": True}})

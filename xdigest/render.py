@@ -41,6 +41,8 @@ body { background: transparent; font: 16px/1.4 -apple-system, BlinkMacSystemFont
 .quote .media { margin: 10px -14px -12px; border-radius: 0 0 13px 13px; }
 .quote .media.n1 img { max-height: 360px; }
 .quote .media .m { min-height: 90px; }
+.part { margin-top: 12px; padding-top: 10px; border-top: 1px solid #eff3f4; }
+.n { color: #536471; font-size: 13px; margin-bottom: 2px; }
 """
 
 PALETTE = ["#1d9bf0", "#f91880", "#00ba7c", "#7856ff", "#ff7a00", "#e0245e"]
@@ -127,6 +129,13 @@ def card_html(post: dict) -> tuple[str, list[dict]]:
             qparts.append(f'<div class="text">{_linkify(q["text"])}</div>')
         qparts.append(_media(q, slots))
         body.append(f'<div class="quote">{"".join(qparts)}</div>')
+    thread = post.get("thread") or []
+    for n, part in enumerate(thread[:8], 2):
+        body.append(f'<div class="part"><div class="n">{n}/{len(thread) + 1}</div>'
+                    + (f'<div class="text">{_linkify(part["text"])}</div>' if part.get("text") else "")
+                    + _media(part, slots) + '</div>')
+    if len(thread) > 8:
+        body.append(f'<div class="part n">… {len(thread) - 8} more on X</div>')
     page = f'<html><head><style>{CSS}</style></head><body><div class="card">{"".join(body)}</div></body></html>'
     return page, slots
 
