@@ -60,6 +60,23 @@ def push_inbox(run_id: str, posts: list[dict]) -> None:
         _git("-c", "user.name=xdigest", "-c", "user.email=xdigest@localhost",
              "commit", "-q", "-m", f"inbox {run_id}", cwd=root)
         _git("push", "-q", "--force", _repo_url(), "inbox:inbox", cwd=root)
+        sha = _git("rev-parse", "HEAD", cwd=root).strip()
+    (store.RUNS_DIR / run_id).mkdir(parents=True, exist_ok=True)
+    (store.RUNS_DIR / run_id / "inbox_sha").write_text(sha)
+
+
+def clear_inbox(run_id: str) -> None:
+    """After delivering run_id, delete the inbox branch so later routine runs (the
+    backup schedule, a stray fire) find nothing to do, but only if the inbox still
+    holds this run: the lease makes git refuse if a newer batch has replaced it."""
+    sha_file = store.RUNS_DIR / run_id / "inbox_sha"
+    if not sha_file.exists():
+        return
+    try:
+        _git("push", "-q", f"--force-with-lease=refs/heads/inbox:{sha_file.read_text().strip()}",
+             _repo_url(), ":refs/heads/inbox")
+    except subprocess.CalledProcessError:
+        pass  # already gone, or a newer batch is waiting: leave it
 
 
 def fire_routine(run_id: str) -> None:

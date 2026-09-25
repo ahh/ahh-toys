@@ -165,14 +165,16 @@ def deliver(run_id: str) -> None:
             notify.send_posts([p for _, _, p in order])
         (run_dir / "sent").touch()
 
-    store.write_jsonl(run_dir / "scored.jsonl", out["scored"])
-    store.write_jsonl(run_dir / "picks.jsonl", out["picks"])
-    store.write_jsonl(run_dir / "samples.jsonl", out["samples"])
-    store.append_jsonl(store.SCORE_LOG, [
-        {"run": run_id, **local.get(row["id"], {}), "scoring": row["scoring"]} for row in out["scored"]
-    ])
-    (run_dir / "outbox.json").write_text(json.dumps(out["run"], indent=2))
+    if not (run_dir / "outbox.json").exists():  # archive each run once, even if re-scored
+        store.write_jsonl(run_dir / "scored.jsonl", out["scored"])
+        store.write_jsonl(run_dir / "picks.jsonl", out["picks"])
+        store.write_jsonl(run_dir / "samples.jsonl", out["samples"])
+        store.append_jsonl(store.SCORE_LOG, [
+            {"run": run_id, **local.get(row["id"], {}), "scoring": row["scoring"]} for row in out["scored"]
+        ])
+        (run_dir / "outbox.json").write_text(json.dumps(out["run"], indent=2))
     mailbox.delete_outbox(run_id)
+    mailbox.clear_inbox(run_id)
     print(f"delivered {run_id}: {len(out['picks'])} picks + {len(out['samples'])} samples "
           f"from {out['run']['n_posts']} posts "
           f"({out['run'].get('n_missing', 0)} unscored)")
