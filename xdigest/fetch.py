@@ -1,11 +1,13 @@
 """Scroll the For You timeline in a dedicated Chrome profile and extract posts.
 
 This is deliberately dumb code: it navigates to x.com/home, scrolls, and reads
-the DOM. It never clicks anything except the "For you" tab, and no model ever
-sees page content while this browser is open.
+the DOM. The only things it ever clicks are the "For you" tab and X's own "Retry"
+button when the feed stops loading. No model ever sees page content while this
+browser is open.
 """
 
 import random
+import re
 import subprocess
 import time
 import urllib.request
@@ -19,6 +21,12 @@ EXTRACT_JS = (Path(__file__).parent / "extract.js").read_text()
 
 LOGGED_IN_SELECTOR = '[data-testid="SideNav_AccountSwitcher_Button"], [data-testid="AppTabBar_Profile_Link"]'
 LOGGED_OUT_SELECTOR = '[data-testid="loginButton"], [data-testid="login"], a[href="/login"]'
+
+# When the feed stops loading new posts: after STALL_SCROLLS empty scrolls, pause,
+# nudge the page (and press X's Retry if it's showing), up to MAX_RECOVERIES times.
+STALL_SCROLLS = 5
+MAX_RECOVERIES = 3
+STALL_SCREENSHOT = store.DATA_DIR / "last-stall.png"
 
 
 class LoggedOut(Exception):
@@ -110,7 +118,14 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
             page.wait_for_selector('article[data-testid="tweet"]', timeout=30_000)
 
             counted: set[str] = set()
-            while len(posts) < max_posts and consecutive_seen < stop_after_seen and stalled < 8:
+            stats.update(recoveries=0, retry_clicks=0)
+            while len(posts) < max_posts and consecutive_seen < stop_after_seen:
+                if stalled >= STALL_SCROLLS:
+                    if stats["recoveries"] >= MAX_RECOVERIES:
+                        _record_stall(page, stats)
+                        break
+                    _recover(page, stats)
+                    stalled = 0
                 found_new = False
                 for post in page.evaluate(EXTRACT_JS):
                     key = post["id"] or (post["author"]["handle"] + post["text"][:40])
@@ -138,12 +153,49 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
         finally:
             ctx.close()
 
+    stats.setdefault("stall", None)
     stats["stop_reason"] = (
         "max_posts" if len(posts) >= max_posts
         else "seen_streak" if consecutive_seen >= stop_after_seen
         else "stalled"
     )
     return list(posts.values())[:max_posts], stats
+
+
+def _retry_button(page: Page):
+    return page.get_by_role("button", name=re.compile(r"^\s*retry\s*$", re.I))
+
+
+def _recover(page: Page, stats: dict) -> None:
+    """The feed stopped loading (usually X throttling): wait, nudge, press Retry."""
+    stats["recoveries"] += 1
+    time.sleep(random.uniform(30, 60))
+    page.mouse.wheel(0, -random.randint(1200, 2000))
+    time.sleep(random.uniform(2, 4))
+    retry = _retry_button(page)
+    if retry.count() and retry.first.is_visible():
+        retry.first.click()
+        stats["retry_clicks"] += 1
+        time.sleep(random.uniform(4, 8))
+    page.mouse.wheel(0, random.randint(1500, 2500))
+    time.sleep(random.uniform(2, 4))
+    _check_state(page)
+
+
+def _record_stall(page: Page, stats: dict) -> None:
+    """Note what the page showed when we gave up, for diagnosing next time."""
+    text = page.locator("body").inner_text()
+    stats["stall"] = {
+        "retry_visible": bool(_retry_button(page).count()),
+        "something_went_wrong": "Something went wrong" in text,
+        "rate_limit_text": bool(re.search(r"rate limit|too many requests", text, re.I)),
+        "screenshot": str(STALL_SCREENSHOT),
+    }
+    try:
+        store.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(STALL_SCREENSHOT))
+    except Exception:
+        stats["stall"]["screenshot"] = None
 
 
 def _pick_mp4(video_info: dict | None) -> str | None:
