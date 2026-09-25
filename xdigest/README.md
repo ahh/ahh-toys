@@ -31,6 +31,11 @@ deliver: email/Telegram/Signal ◀──   claude/outbox-<run>  (scores, picks) 
   delete the branch
 ```
 
+**Long posts and threads.** The fetcher reads the full text of long posts (the page
+cuts them off at "Show more"). When a post is part of a thread by its author, it opens
+that thread's page in a second tab (up to 10 per run) and delivers the whole thread as
+one post, which is also how it gets scored.
+
 **Security design.** The feed is written by strangers, so nothing that reads it can do
 anything else:
 
