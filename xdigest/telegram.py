@@ -52,7 +52,8 @@ def _media(post: dict) -> list[dict]:
 def _caption(post: dict) -> str:
     esc = html.escape
     a = post["author"]
-    parts = [f"<b>{esc(a['name'])}</b> @{esc(a['handle'])}"]
+    parts = [f"<i>🔍 {esc(post['note'])}</i>"] if post.get("note") else []
+    parts.append(f"<b>{esc(a['name'])}</b> @{esc(a['handle'])}")
     if post.get("text"):
         parts.append(esc(post["text"]))
     q = post.get("quote")

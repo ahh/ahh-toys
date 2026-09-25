@@ -138,7 +138,11 @@ def _gif_width(path: Path) -> int | None:
 
 def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
     url = post["url"]
-    parts = [_who(post["author"])]
+    parts = []
+    if post.get("note"):
+        parts.append(f'<div style="margin-bottom:12px;padding:10px 12px;background:#fff4e5;border-left:3px solid #f5a623;'
+                     f'border-radius:6px;font:14px/1.4 {FONT};color:#5c3b00">🔍 {html.escape(post["note"])}</div>')
+    parts.append(_who(post["author"]))
     if post.get("text"):
         parts.append(f'<div style="font:17px/1.45 {FONT};color:#0f1419">{_linkify(post["text"])}</div>')
     parts.append(_media(post, url, tmp, attachments))
@@ -158,11 +162,13 @@ def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
 def _subject(post: dict) -> str:
     text = " ".join((post.get("text") or (post.get("quote") or {}).get("text") or "").split())
     snippet = text[:80] + ("…" if len(text) > 80 else "")
-    return f'{post["author"]["name"]}: {snippet}' if snippet else post["author"]["name"]
+    subject = f'{post["author"]["name"]}: {snippet}' if snippet else post["author"]["name"]
+    return f"[not picked] {subject}" if post.get("note") else subject
 
 
 def _plain(post: dict) -> str:
-    lines = [f'{post["author"]["name"]} @{post["author"]["handle"]}', "", post.get("text") or ""]
+    lines = ([f'🔍 {post["note"]}', ""] if post.get("note") else []) + \
+        [f'{post["author"]["name"]} @{post["author"]["handle"]}', "", post.get("text") or ""]
     q = post.get("quote")
     if q:
         lines += ["", f'> {q["author"]["name"]} @{q["author"]["handle"]}', "> " + (q.get("text") or "")]

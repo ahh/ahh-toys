@@ -212,6 +212,11 @@ human check, you'll get a message saying so; run `login` again.
   every day.
 - **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
   `routine/pick.py`; `--max-posts` (default 300) for how much of the feed to read.
+- **Calibration samples:** each day also sends `SAMPLES` (default 5) posts drawn
+  uniformly at random from everything *not* picked, rejects included, each labeled
+  with its score or reject reason and the scorer's one-line reason ("[not picked]" in
+  email subjects). Seeing what the rubric throws away is the fastest way to tune it.
+  Set `SAMPLES = 0` in `routine/pick.py` to turn this off.
 - **Look:** `emailmsg.py` (email), `telegram.py`, `render.py` (Signal cards).
 
 ## Files

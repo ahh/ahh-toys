@@ -7,12 +7,16 @@
 
 import json
 import math
+import random
 import sys
 from pathlib import Path
 
 BATCH_SIZE = 25
 FRACTION = 0.10
 MIN_SCORE = 6
+# Calibration: also send a few non-picks, drawn uniformly at random from everything not
+# picked (rejects included), each labeled with why it wasn't picked, to tune the rubric.
+SAMPLES = 5
 
 REJECT_REASONS = {"none", "politics", "ragebait", "ad", "other"}
 CATEGORIES = {"joke", "meme", "tech", "learning", "delight", "other"}
@@ -106,16 +110,40 @@ def finish() -> None:
     keep.sort(key=lambda r: (r["scoring"]["score"], likes[r["id"]]), reverse=True)
     picks = keep[:math.ceil(len(scored) * FRACTION)]
 
+    run = json.loads((ROOT / "run.json").read_text())
+    samples = _samples(scored, picks, random.Random(run["run_id"]))
+
     write_jsonl(OUT / "scored.jsonl", scored)
     write_jsonl(OUT / "picks.jsonl", picks)
-    run = json.loads((ROOT / "run.json").read_text())
+    write_jsonl(OUT / "samples.jsonl", samples)
     (OUT / "run.json").write_text(json.dumps({
         **run, "n_posts": len(posts), "n_scored": len(scores), "n_missing": len(missing),
-        "n_invalid_lines": bad, "n_picks": len(picks),
+        "n_invalid_lines": bad, "n_picks": len(picks), "n_samples": len(samples),
     }, indent=2))
-    print(f"scored {len(scores)}/{len(posts)} | invalid lines {bad} | missing {len(missing)} | picks {len(picks)}")
+    print(f"scored {len(scores)}/{len(posts)} | invalid lines {bad} | missing {len(missing)} | "
+          f"picks {len(picks)} | samples {len(samples)}")
     if missing:
         print("missing ids:", " ".join(missing))
+
+
+def _samples(scored: list[dict], picks: list[dict], rng: random.Random) -> list[dict]:
+    """SAMPLES non-picks chosen uniformly at random (not stratified, not weighted by
+    score), each with a note saying why it wasn't picked."""
+    picked = {r["id"] for r in picks}
+    pool = [r for r in scored if r["id"] not in picked and not r["scoring"].get("error")]
+    out = []
+    for r in rng.sample(pool, min(SAMPLES, len(pool))):
+        sc = r["scoring"]
+        if sc["rejected"]:
+            note = f"Not picked: rejected as {sc['reject_reason']}. {sc['why']}"
+        elif sc["score"] >= MIN_SCORE:
+            note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}), above the {MIN_SCORE}+ bar "
+                    f"but outside today's top {round(FRACTION * 100)}%. {sc['why']}")
+        else:
+            note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}), "
+                    f"below the {MIN_SCORE}+ bar. {sc['why']}")
+        out.append({**r, "note": note})
+    return out
 
 
 if __name__ == "__main__":

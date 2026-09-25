@@ -79,6 +79,8 @@ def read_outbox(run_id: str) -> dict:
             "run": json.loads((root / "out" / "run.json").read_text()),
             "scored": store.read_jsonl(root / "out" / "scored.jsonl"),
             "picks": store.read_jsonl(root / "out" / "picks.jsonl"),
+            "samples": (store.read_jsonl(root / "out" / "samples.jsonl")
+                        if (root / "out" / "samples.jsonl").exists() else []),
         }
 
 

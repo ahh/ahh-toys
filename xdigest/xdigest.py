@@ -144,22 +144,32 @@ def deliver(run_id: str) -> None:
     posts_file = run_dir / "posts.jsonl"
     local = {p["id"]: p for p in store.read_jsonl(posts_file)} if posts_file.exists() else {}
     if not (run_dir / "sent").exists():
-        if out["picks"]:
+        def full(row: dict) -> dict:
             # Full post from the local fetch; bare link if this Mac doesn't have it.
-            notify.send_posts([local.get(pick["id"]) or {"author": {"name": "", "handle": pick["author"]},
-                                                        "url": pick["url"]} for pick in out["picks"]])
-        else:
+            post = local.get(row["id"]) or {"author": {"name": "", "handle": row["author"]}, "url": row["url"]}
+            return {**post, "note": row["note"]} if row.get("note") else post
+
+        picks, samples = [full(r) for r in out["picks"]], [full(r) for r in out["samples"]]
+        if not picks:
             notify.send(f"📭 X digest: nothing cleared the bar out of {out['run']['n_posts']} posts.")
+        # Spread the calibration samples evenly among the picks rather than at the end.
+        order = sorted([((i + 0.5) / max(len(picks), 1), 0, p) for i, p in enumerate(picks)] +
+                       [((j + 1) / (len(samples) + 1), 1, p) for j, p in enumerate(samples)],
+                       key=lambda t: t[:2])
+        if order:
+            notify.send_posts([p for _, _, p in order])
         (run_dir / "sent").touch()
 
     store.write_jsonl(run_dir / "scored.jsonl", out["scored"])
     store.write_jsonl(run_dir / "picks.jsonl", out["picks"])
+    store.write_jsonl(run_dir / "samples.jsonl", out["samples"])
     store.append_jsonl(store.SCORE_LOG, [
         {"run": run_id, **local.get(row["id"], {}), "scoring": row["scoring"]} for row in out["scored"]
     ])
     (run_dir / "outbox.json").write_text(json.dumps(out["run"], indent=2))
     mailbox.delete_outbox(run_id)
-    print(f"delivered {run_id}: {len(out['picks'])} picks from {out['run']['n_posts']} posts "
+    print(f"delivered {run_id}: {len(out['picks'])} picks + {len(out['samples'])} samples "
+          f"from {out['run']['n_posts']} posts "
           f"({out['run'].get('n_missing', 0)} unscored)")
 
 

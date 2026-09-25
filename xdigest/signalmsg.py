@@ -48,6 +48,9 @@ class _Text:
 
 def _body(post: dict) -> _Text:
     t = _Text()
+    if post.get("note"):
+        t.add(f"🔍 {post['note']}", "ITALIC")
+        t.add("\n\n")
     a = post["author"]
     t.add(a["name"], "BOLD")
     t.add(f" @{a['handle']}")
@@ -116,7 +119,8 @@ def send_post(post: dict) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         try:
             card = render.render_card(post, Path(tmp))
-            _send(_short_link(post), [str(card)])
+            text = (f"🔍 {post['note']}\n" if post.get("note") else "") + _short_link(post)
+            _send(text, [str(card)])
             return
         except Exception as e:
             print(f"card failed for {post['url']}: {type(e).__name__}: {e}; sending as text", file=sys.stderr)
