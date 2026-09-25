@@ -12,7 +12,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import store
@@ -58,6 +60,26 @@ def push_inbox(run_id: str, posts: list[dict]) -> None:
         _git("-c", "user.name=xdigest", "-c", "user.email=xdigest@localhost",
              "commit", "-q", "-m", f"inbox {run_id}", cwd=root)
         _git("push", "-q", "--force", _repo_url(), "inbox:inbox", cwd=root)
+
+
+def fire_routine(run_id: str) -> None:
+    """Start the scoring routine now via its API trigger, if configured
+    (ROUTINE_FIRE_URL + ROUTINE_FIRE_TOKEN). The token can only start that one routine.
+    Best effort: if this fails, the routine's own schedule picks the batch up."""
+    url, token = os.environ.get("ROUTINE_FIRE_URL"), os.environ.get("ROUTINE_FIRE_TOKEN")
+    if not (url and token):
+        return
+    req = urllib.request.Request(url, data=json.dumps({"text": f"inbox {run_id} is ready"}).encode(), headers={
+        "Authorization": f"Bearer {token}",
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "User-Agent": "xdigest",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print("fired routine:", json.load(resp).get("claude_code_session_url"))
+    except OSError as e:
+        print(f"routine fire failed ({e}); relying on the routine's schedule", file=sys.stderr)
 
 
 def outbox_ready(run_id: str) -> bool:

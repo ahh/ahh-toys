@@ -7,7 +7,7 @@
     uv run xdigest.py push           # push the latest local run to the inbox branch
     uv run xdigest.py deliver        # send + archive any scored runs waiting in the repo
     uv run xdigest.py run            # daily job: deliver leftovers, fetch, push, wait, deliver
-    uv run xdigest.py install-schedule [--at 07:30]   # run `run --headless` daily via launchd
+    uv run xdigest.py install-schedule [--at 07:30,10:30,...]  # run `run --headless` via launchd
     uv run xdigest.py uninstall-schedule
 """
 
@@ -87,6 +87,11 @@ def cmd_check(args) -> None:
                    f"TXT _dmarc.{org} = v=DMARC1; p=none;")
             print("  · Resend must also show the domain as Verified (can lag DNS by up to an hour)")
 
+    fire = bool(os.environ.get("ROUTINE_FIRE_URL") and os.environ.get("ROUTINE_FIRE_TOKEN"))
+    print(("  ✓ " if fire else "  · ") + "routine API trigger " +
+          ("set (scoring starts right after each push)" if fire else
+           "not set (optional: ROUTINE_FIRE_URL + ROUTINE_FIRE_TOKEN; otherwise scoring waits for the routine's schedule)"))
+
     print("X login")
     cookies = store.PROFILE_DIR / "Default" / "Cookies"
     logged_in = False
@@ -99,7 +104,7 @@ def cmd_check(args) -> None:
 
     print("schedule")
     report(SCHEDULE_PLIST.exists(), f"daily job installed ({SCHEDULE_PLIST.name})",
-           "uv run xdigest.py install-schedule --at 07:30")
+           "uv run xdigest.py install-schedule")
     print("  ? scoring routine: can't be checked from here; see ROUTINE_PROMPT.md")
     print("all set" if ok_all else "some steps remain")
 
@@ -189,6 +194,7 @@ def cmd_run(args) -> None:
             notify.send("📭 X digest: no new posts in For You today.")
             return
         cmd_push(args, run_id, posts)
+        mailbox.fire_routine(run_id)
 
         deadline = time.time() + args.wait_hours * 3600
         while not mailbox.outbox_ready(run_id):
@@ -214,7 +220,7 @@ SCHEDULE_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{SCHEDULE_LABEL}.p
 
 
 def cmd_install_schedule(args) -> None:
-    hour, minute = (int(x) for x in args.at.split(":"))
+    times = [tuple(int(x) for x in t.strip().split(":")) for t in args.at.split(",")]
     uv = shutil.which("uv")
     if not uv:
         raise SystemExit("uv not found on PATH")
@@ -227,17 +233,20 @@ def cmd_install_schedule(args) -> None:
     SCHEDULE_PLIST.write_bytes(plistlib.dumps({
         "Label": SCHEDULE_LABEL,
         "ProgramArguments": [uv, "run", "--directory", str(Path(__file__).resolve().parent),
-                             "xdigest.py", "run", "--headless"],
+                             "xdigest.py", "run", "--headless", "--max-posts", str(args.max_posts),
+                             "--wait-hours", str(args.wait_hours)],
         "EnvironmentVariables": {"PATH": path, "PYTHONUNBUFFERED": "1"},
-        # If the Mac is asleep at this time, launchd runs the job when it wakes.
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        # If the Mac is asleep at one of these times, launchd runs the job when it wakes
+        # (and never starts a second copy while one is still running).
+        "StartCalendarInterval": [{"Hour": h, "Minute": m} for h, m in times],
         "StandardOutPath": log,
         "StandardErrorPath": log,
     }))
     domain = f"gui/{os.getuid()}"
     subprocess.run(["launchctl", "bootout", domain, str(SCHEDULE_PLIST)], capture_output=True)
     subprocess.run(["launchctl", "bootstrap", domain, str(SCHEDULE_PLIST)], check=True)
-    print(f"installed: daily at {hour:02d}:{minute:02d} -> {SCHEDULE_PLIST}\nlog: {log}")
+    when = ", ".join(f"{h:02d}:{m:02d}" for h, m in times)
+    print(f"installed: daily at {when}, {args.max_posts} posts each -> {SCHEDULE_PLIST}\nlog: {log}")
 
 
 def cmd_uninstall_schedule(args) -> None:
@@ -254,7 +263,11 @@ def main() -> None:
                      ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
     p = sub.add_parser("install-schedule")
-    p.add_argument("--at", default="07:30", help="local time, HH:MM (default 07:30)")
+    p.add_argument("--at", default="07:30,10:30,13:30,16:30,19:30",
+                   help="comma-separated local times, HH:MM (default 5 runs, every 3h from 07:30)")
+    p.add_argument("--max-posts", type=int, default=60, help="posts to read per run (default 60)")
+    p.add_argument("--wait-hours", type=float, default=2,
+                   help="how long each run waits for scores; keep it under the gap between runs")
     p.set_defaults(fn=cmd_install_schedule)
     for name, fn in [("fetch", cmd_fetch), ("run", cmd_run)]:
         p = sub.add_parser(name)

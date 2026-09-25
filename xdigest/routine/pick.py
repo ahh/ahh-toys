@@ -14,9 +14,10 @@ from pathlib import Path
 BATCH_SIZE = 25
 FRACTION = 0.10
 MIN_SCORE = 6
-# Calibration: also send a few non-picks, drawn uniformly at random from everything not
-# picked (rejects included), each labeled with why it wasn't picked, to tune the rubric.
-SAMPLES = 5
+# Calibration: also send a few non-picks per batch, drawn uniformly at random from
+# everything not picked (rejects included), each labeled with why it wasn't picked, to
+# tune the rubric. (1 per batch x 5 batches a day = 5 a day.)
+SAMPLES = 1
 
 REJECT_REASONS = {"none", "politics", "ragebait", "ad", "other"}
 CATEGORIES = {"joke", "meme", "tech", "learning", "delight", "other"}

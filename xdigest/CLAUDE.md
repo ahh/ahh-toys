@@ -59,15 +59,18 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
      `RemoteTrigger`), create it with: the data repo as the only source, the Default
      environment, model `claude-opus-5` unless they prefer another, allowed tools
      `Bash, Read, Write, Agent`, the prompt = everything below the line in
-     ROUTINE_PROMPT.md verbatim, and a cron that runs hourly for 5 hours starting at
-     the first full hour after their fetch time, **in UTC** (confirm the conversion
-     with them).
+     ROUTINE_PROMPT.md verbatim, and a backup cron 45 minutes after each of their
+     fetch times, **in UTC** (confirm the conversion with them).
    - **Then remove its connectors**: routines inherit every claude.ai connector on the
      account (Drive, Gmail, ...). Update the routine with `clear_mcp_connections: true`
      and verify `mcp_connections` is empty. This routine reads strangers' posts; do not
      skip this.
    - Without such a tool, walk them through https://claude.ai/code/routines using
      ROUTINE_PROMPT.md.
+   - **API trigger** (user): in the routine's settings, Add another trigger → API →
+     Generate token; they paste the URL and token into the env file as
+     `ROUTINE_FIRE_URL` / `ROUTINE_FIRE_TOKEN` (a secret: not in chat). The Mac then
+     fires the routine right after each push; `check` reports whether it's set.
 
 6. **Test** (you): `uv run xdigest.py fetch --max-posts 40 --headless`, then
    `uv run xdigest.py push`, then run the routine now (tool or web UI), then run
@@ -75,8 +78,10 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
    them to confirm the messages arrived and look right (email: check spam/Promotions,
    add a filter for `from:onboarding@resend.dev`).
 
-7. **Schedule** (you, at the time they choose): `uv run xdigest.py install-schedule
-   --at 07:30`. Make sure the routine's cron covers the hours after this time.
+7. **Schedule** (you): `uv run xdigest.py install-schedule` (default: 60 posts at
+   07:30, 10:30, 13:30, 16:30, 19:30; `--at` takes comma-separated times). Make sure the
+   routine's backup cron matches. With email on their own domain, set
+   `EMAIL_SPREAD_HOURS` to the gap between runs.
 
 ## Rules while working here
 
@@ -86,6 +91,6 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
 - Never print, echo, or commit secrets or the env file's values. Data and secrets live
   outside the repo (`~/.config/xdigest`, `~/.local/share/xdigest`); keep it that way.
 - Don't edit `routine/SCORING.md` (their taste) unless they ask; do tell them it's
-  where tuning happens. Also tell them each day includes 5 "[not picked]" calibration
-  samples (random non-picks, labeled with why), and that `SAMPLES = 0` in
+  where tuning happens. Also tell them each batch includes 1 "[not picked]" calibration
+  sample (a random non-pick, labeled with why; 5 a day), and that `SAMPLES = 0` in
   `routine/pick.py` turns them off.

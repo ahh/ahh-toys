@@ -22,7 +22,7 @@ your own risk.
 ## How it works
 
 ```
-your Mac (daily, launchd)             github.com/<you>/xdigest-data (private)     Claude routine (cloud, hourly)
+your Mac (5x a day, launchd)          github.com/<you>/xdigest-data (private)     Claude routine (cloud, fired by the Mac)
 fetch: scroll For You in a     ──▶   inbox  (one commit: today's posts,    ──▶   score every post with
   dedicated Chrome profile             images, rubric, helper script)             subagents against SCORING.md;
                                                                                   pick the top 10%
@@ -191,6 +191,13 @@ use "Chrome Safe Storage" in the Keychain the first time the fetcher runs: choos
 ### 5. Create the scoring routine
 
 Follow [ROUTINE_PROMPT.md](ROUTINE_PROMPT.md). Don't skip removing the connectors.
+Give it an **API trigger** and put its URL and token in the env file, so your Mac can
+start scoring the moment a batch is pushed:
+
+```
+ROUTINE_FIRE_URL=https://api.anthropic.com/v1/claude_code/routines/trig_.../fire
+ROUTINE_FIRE_TOKEN=sk-ant-oat01-...
+```
 
 ### 6. Try it, then schedule it
 
@@ -199,11 +206,16 @@ uv run xdigest.py fetch --max-posts 40 --headless   # read 40 posts
 uv run xdigest.py push                              # hand them to the routine
 # run the routine now from claude.ai/code/routines, wait for it to finish, then:
 uv run xdigest.py deliver                           # picks arrive by email/Telegram/Signal
-uv run xdigest.py install-schedule --at 07:30       # daily from now on
+uv run xdigest.py install-schedule                  # 5x a day from now on
 ```
 
-The daily job (`run --headless`) does all of that and waits up to 4 hours for the
-routine. Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
+By default the schedule runs at 07:30, 10:30, 13:30, 16:30 and 19:30, reading 60 posts
+each time (short sessions are gentler on X than one long scroll). Each run fetches,
+pushes, fires the routine, waits up to 2 hours for scores, and sends the picks.
+Change it with `--at 08:00,12:00,18:00`, `--max-posts` and `--wait-hours` (keep the
+wait shorter than the gap between runs). For email with your own domain, set
+`EMAIL_SPREAD_HOURS` to the gap between runs (3 by default) for a continuous trickle.
+Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
 human check, you'll get a message saying so; run `login` again.
 
 ## Tuning
@@ -211,8 +223,9 @@ human check, you'll get a message saying so; run `login` again.
 - **Taste:** edit `routine/SCORING.md`. It's plain English; the routine reads it fresh
   every day.
 - **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
-  `routine/pick.py`; `--max-posts` (default 300) for how much of the feed to read.
-- **Calibration samples:** each day also sends `SAMPLES` (default 5) posts drawn
+  `routine/pick.py`; `install-schedule --max-posts` (default 60 per run) for how much of
+  the feed to read.
+- **Calibration samples:** each batch also sends `SAMPLES` (default 1, so 5 a day) posts drawn
   uniformly at random from everything *not* picked, rejects included, each labeled
   with its score or reject reason and the scorer's one-line reason ("[not picked]" in
   email subjects). Seeing what the rubric throws away is the fastest way to tune it.

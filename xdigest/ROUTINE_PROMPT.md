@@ -5,9 +5,15 @@ Create this at https://claude.ai/code/routines (New routine):
 - **Repository:** your private data repo (e.g. `you/xdigest-data`)
 - **Environment:** Default
 - **Model:** Claude Opus 5 (Sonnet is cheaper on quota and probably fine)
-- **Schedule:** hourly for a few hours after your fetch time. The Mac pushes the day's
-  posts at the `install-schedule` time; a run that finds them already scored exits
-  immediately. E.g. fetch at 07:30 US Eastern → cron `0 12-16 * * *` (UTC).
+- **Triggers:**
+  - **API** (recommended): Add another trigger → API → Generate token. Put the URL and
+    token it shows in your env file as `ROUTINE_FIRE_URL` and `ROUTINE_FIRE_TOKEN`; your
+    Mac then starts the routine the moment each batch is pushed. The token can only
+    start this routine (no read access). It's shown once; generating a new one revokes it.
+  - **Schedule** (backup, in case the API fire fails): 45 minutes after each of your
+    `install-schedule` times, in UTC. A run that finds its batch already scored exits
+    immediately. E.g. fetches at 07:30/10:30/13:30/16:30/19:30 US Eastern (summer) →
+    cron `15 0,12,15,18,21 * * *`.
 - **Tools:** Bash, Read, Write, Agent
 - **Connectors: remove all of them.** Routines get every connector on your claude.ai
   account by default (Google Drive, Gmail, ...). This routine reads posts written by
