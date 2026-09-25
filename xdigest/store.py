@@ -8,6 +8,8 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "xdigest"
 DATA_DIR = Path.home() / ".local" / "share" / "xdigest"
 ENV_FILE = CONFIG_DIR / "env"
+# Your scoring rubric (private; falls back to routine/SCORING.default.md).
+SCORING_FILE = CONFIG_DIR / "SCORING.md"
 PROFILE_DIR = DATA_DIR / "browser-profile"
 SEEN_FILE = DATA_DIR / "seen.json"
 RUNS_DIR = DATA_DIR / "runs"

@@ -182,6 +182,9 @@ signal-cli -a +BOTNUMBER updateProfile --given-name "X Digest"
 Then `SIGNAL_ACCOUNT=+BOTNUMBER` and `SIGNAL_TO=+YOURNUMBER` in the env file, and accept
 the bot's message request on your phone.
 
+Optionally, make the scoring rubric your own now (or later, see Tuning):
+`cp routine/SCORING.default.md ~/.config/xdigest/SCORING.md` and edit it.
+
 ### 4. Log in to X
 
 ```
@@ -225,8 +228,10 @@ human check, you'll get a message saying so; run `login` again.
 
 ## Tuning
 
-- **Taste:** edit `routine/SCORING.md`. It's plain English; the routine reads it fresh
-  every day.
+- **Taste:** your rubric is `~/.config/xdigest/SCORING.md`, plain English, private to
+  you: it goes to the routine with each batch (through your private data repo) and is
+  never committed here. Start from the default: `cp routine/SCORING.default.md
+  ~/.config/xdigest/SCORING.md`. Without a copy, the default is used.
 - **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
   `routine/pick.py`; `install-schedule --max-posts` (default 60 per run) for how much of
   the feed to read.

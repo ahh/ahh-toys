@@ -92,6 +92,11 @@ def cmd_check(args) -> None:
           ("set (scoring starts right after each push)" if fire else
            "not set (optional: ROUTINE_FIRE_URL + ROUTINE_FIRE_TOKEN; otherwise scoring waits for the routine's schedule)"))
 
+    if store.SCORING_FILE.exists():
+        print(f"  ✓ your scoring rubric: {store.SCORING_FILE}")
+    else:
+        print(f"  · using the default rubric; to customize: cp routine/SCORING.default.md {store.SCORING_FILE}")
+
     print("X login")
     cookies = store.PROFILE_DIR / "Default" / "Cookies"
     logged_in = False

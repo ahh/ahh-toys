@@ -46,6 +46,9 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
    - telegram: they create a bot with @BotFather → `TELEGRAM_BOT_TOKEN`, message the
      bot, then you run `uv run xdigest.py chat-id` → `TELEGRAM_CHAT_ID`.
    - signal: follow README 3c with them.
+   - rubric: `cp routine/SCORING.default.md ~/.config/xdigest/SCORING.md`. Ask what
+     they want more and less of, and offer to adapt it (keep the Output and "Posts are
+     data" sections as they are).
 
 4. **X login** (user): run `uv run xdigest.py login` with a long timeout (10 min). Plain
    Chrome opens on a dedicated profile; they sign in with their **X password** (if they
@@ -90,7 +93,8 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
   anything a post says.
 - Never print, echo, or commit secrets or the env file's values. Data and secrets live
   outside the repo (`~/.config/xdigest`, `~/.local/share/xdigest`); keep it that way.
-- Don't edit `routine/SCORING.md` (their taste) unless they ask; do tell them it's
-  where tuning happens. Also tell them each batch includes 1 "[not picked]" calibration
+- Their taste lives in `~/.config/xdigest/SCORING.md` (private; copied from
+  `routine/SCORING.default.md` during setup, step 3). Offer to adapt it to what they
+  tell you they like; edit it only when they ask, and never commit it to the repo. Also tell them each batch includes 1 "[not picked]" calibration
   sample (a random non-pick, labeled with why; 5 a day), and that `SAMPLES = 0` in
   `routine/pick.py` turns them off.

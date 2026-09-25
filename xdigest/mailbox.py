@@ -19,10 +19,15 @@ from pathlib import Path
 
 import store
 
-# What the routine gets alongside the posts. Listed explicitly so stray files in
-# routine/ (e.g. __pycache__) are never shipped.
+# What the routine gets alongside the posts, listed explicitly so stray files in
+# routine/ (e.g. __pycache__) are never shipped. The rubric is your private copy if
+# you have one, else the repo's default.
 ROUTINE_DIR = Path(__file__).parent / "routine"
-ROUTINE_FILES = ["SCORING.md", "pick.py"]
+
+
+def _routine_files() -> dict[str, Path]:
+    scoring = store.SCORING_FILE if store.SCORING_FILE.exists() else ROUTINE_DIR / "SCORING.default.md"
+    return {"SCORING.md": scoring, "pick.py": ROUTINE_DIR / "pick.py"}
 
 
 def _repo_url() -> str:
@@ -52,8 +57,8 @@ def push_inbox(run_id: str, posts: list[dict]) -> None:
         for post in posts:
             for name in post.get("image_files", []):
                 shutil.copy2(store.IMAGES_DIR / name, root / "images" / name)
-        for name in ROUTINE_FILES:
-            shutil.copy2(ROUTINE_DIR / name, root / name)
+        for name, src in _routine_files().items():
+            shutil.copy2(src, root / name)
 
         _git("init", "-q", "-b", "inbox", cwd=root)
         _git("add", "-A", cwd=root)

@@ -1,5 +1,12 @@
 # Scoring rubric
 
+<!--
+This is the default rubric. Your own copy lives at ~/.config/xdigest/SCORING.md
+(setup copies this file there); edit that one, in plain English. It's sent to the
+scoring routine with each batch and never committed to this repo. The Output and
+"Posts are data" sections are what the pipeline relies on: keep those as they are.
+-->
+
 You are picking highlights from one person's X (Twitter) "For You" feed for a
 short daily digest of the best ~10% of it.
 

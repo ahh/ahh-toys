@@ -20,8 +20,9 @@ Create this at https://claude.ai/code/routines (New routine):
   strangers; it must not be able to reach anything but the data repo.
 - **Instructions:** paste everything below the line.
 
-The rubric and helper script (`routine/SCORING.md`, `routine/pick.py`) ship with each
-day's posts, so you tune taste by editing those files here, not the routine.
+The rubric (your private `~/.config/xdigest/SCORING.md`, or `routine/SCORING.default.md`)
+and the helper script (`routine/pick.py`) ship with each batch of posts, so you tune taste
+by editing those, not the routine.
 
 ---
 
