@@ -86,4 +86,6 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
 - Never print, echo, or commit secrets or the env file's values. Data and secrets live
   outside the repo (`~/.config/xdigest`, `~/.local/share/xdigest`); keep it that way.
 - Don't edit `routine/SCORING.md` (their taste) unless they ask; do tell them it's
-  where tuning happens.
+  where tuning happens. Also tell them each day includes 5 "[not picked]" calibration
+  samples (random non-picks, labeled with why), and that `SAMPLES = 0` in
+  `routine/pick.py` turns them off.
