@@ -28,6 +28,10 @@ STALL_SCROLLS = 5
 MAX_RECOVERIES = 3
 STALL_SCREENSHOT = store.DATA_DIR / "last-stall.png"
 
+# Pace like a reader: pause about this long (seconds, randomized) per new post read,
+# on top of the pause after each scroll. Spaces out X's feed requests.
+READ_PAUSE = (0.6, 1.4)
+
 
 class LoggedOut(Exception):
     pass
@@ -127,6 +131,7 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
                     _recover(page, stats)
                     stalled = 0
                 found_new = False
+                new_this_pass = 0
                 for post in page.evaluate(EXTRACT_JS):
                     key = post["id"] or (post["author"]["handle"] + post["text"][:40])
                     if key in counted:
@@ -143,7 +148,9 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
                     else:
                         consecutive_seen = 0
                         posts[post["id"]] = post
+                        new_this_pass += 1
                 stalled = 0 if found_new else stalled + 1
+                time.sleep(sum(random.uniform(*READ_PAUSE) for _ in range(new_this_pass)))
 
                 page.mouse.wheel(0, random.randint(600, 1000))
                 stats["scrolls"] += 1
