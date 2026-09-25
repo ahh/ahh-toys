@@ -17,7 +17,10 @@ from pathlib import Path
 
 import store
 
-ROUTINE_FILES = Path(__file__).parent / "routine"
+# What the routine gets alongside the posts. Listed explicitly so stray files in
+# routine/ (e.g. __pycache__) are never shipped.
+ROUTINE_DIR = Path(__file__).parent / "routine"
+ROUTINE_FILES = ["SCORING.md", "pick.py"]
 
 
 def _repo_url() -> str:
@@ -47,8 +50,8 @@ def push_inbox(run_id: str, posts: list[dict]) -> None:
         for post in posts:
             for name in post.get("image_files", []):
                 shutil.copy2(store.IMAGES_DIR / name, root / "images" / name)
-        for f in ROUTINE_FILES.iterdir():
-            shutil.copy2(f, root / f.name)
+        for name in ROUTINE_FILES:
+            shutil.copy2(ROUTINE_DIR / name, root / name)
 
         _git("init", "-q", "-b", "inbox", cwd=root)
         _git("add", "-A", cwd=root)
