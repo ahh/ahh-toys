@@ -1,6 +1,6 @@
 # xdigest
 
-A daily digest of the best ~10% of your X (Twitter) "For You" feed, delivered by
+A daily digest of the best of your X (Twitter) "For You" feed (about 25 posts a day), delivered by
 email, Telegram, or Signal. Your Mac reads the feed, a Claude routine scores every post
 against a rubric you write (no politics, no ragebait, more jokes/tech/delight, or
 whatever you like), and each pick arrives as its own message:
@@ -232,7 +232,7 @@ human check, you'll get a message saying so; run `login` again.
   you: it goes to the routine with each batch (through your private data repo) and is
   never committed here. Start from the default: `cp routine/SCORING.default.md
   ~/.config/xdigest/SCORING.md`. Without a copy, the default is used.
-- **How many:** `FRACTION` (default top 10%) and `MIN_SCORE` (default 6/10) in
+- **How many:** `FRACTION` (default 1/12: 5 picks per 60-post batch, 25 a day) and `MIN_SCORE` (default 6/10) in
   `routine/pick.py`; `install-schedule --max-posts` (default 60 per run) for how much of
   the feed to read.
 - **Calibration samples:** each batch also sends `SAMPLES` (default 1, so 5 a day) posts drawn

@@ -8,7 +8,7 @@ scoring routine with each batch and never committed to this repo. The Output and
 -->
 
 You are picking highlights from one person's X (Twitter) "For You" feed for a
-short daily digest of the best ~10% of it.
+short daily digest of the best ~8% of it.
 
 ## What they want
 

@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 
 BATCH_SIZE = 25
-FRACTION = 0.10
+# Picks per batch = round(posts x FRACTION): 1/12 is 5 of 60, i.e. 25 a day at 5 runs.
+FRACTION = 1 / 12
 MIN_SCORE = 6
 # Calibration: also send a few non-picks per batch, drawn uniformly at random from
 # everything not picked (rejects included), each labeled with why it wasn't picked, to
@@ -115,7 +116,7 @@ def finish() -> None:
     keep = [r for r in scored if not r["scoring"]["rejected"] and r["scoring"]["score"] >= MIN_SCORE]
     likes = {p["id"]: (p.get("metrics") or {}).get("likes", 0) for p in posts}
     keep.sort(key=lambda r: (r["scoring"]["score"], likes[r["id"]]), reverse=True)
-    picks = keep[:math.ceil(len(scored) * FRACTION)]
+    picks = keep[:max(1, round(len(scored) * FRACTION))]
 
     run = json.loads((ROOT / "run.json").read_text())
     samples = _samples(scored, picks, random.Random(run["run_id"]))
@@ -145,7 +146,7 @@ def _samples(scored: list[dict], picks: list[dict], rng: random.Random) -> list[
             note = f"Not picked: rejected as {sc['reject_reason']}. {sc['why']}"
         elif sc["score"] >= MIN_SCORE:
             note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}), above the {MIN_SCORE}+ bar "
-                    f"but outside today's top {round(FRACTION * 100)}%. {sc['why']}")
+                    f"but outside this batch's top {max(1, round(len(scored) * FRACTION))}. {sc['why']}")
         else:
             note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}), "
                     f"below the {MIN_SCORE}+ bar. {sc['why']}")
