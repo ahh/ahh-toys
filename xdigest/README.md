@@ -25,7 +25,7 @@ your own risk.
 your Mac (5x a day, launchd)          github.com/<you>/xdigest-data (private)     Claude routine (cloud, fired by the Mac)
 fetch: scroll For You in a     ──▶   inbox  (one commit: today's posts,    ──▶   score every post with
   dedicated Chrome profile             images, rubric, helper script)             subagents against SCORING.md;
-                                                                                  pick the top 10%
+                                                                                  pick the top ~8%
 deliver: email/Telegram/Signal ◀──   claude/outbox-<run>  (scores, picks)  ◀──   push outbox
   + archive scores locally,
   delete the branch
