@@ -162,6 +162,9 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
                 stats["scrolls"] += 1
                 time.sleep(random.uniform(1.2, 2.8))
                 _check_state(page)
+            # The last scroll can overshoot max_posts; trim before enriching, so nothing
+            # built below (e.g. a merged thread) gets cut afterwards.
+            posts = dict(list(posts.items())[:max_posts])
             records: dict[str, dict] = {}
             for r in timeline_responses:
                 try:
@@ -185,7 +188,7 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
         else "seen_streak" if consecutive_seen >= stop_after_seen
         else "stalled"
     )
-    return list(posts.values())[:max_posts], stats
+    return list(posts.values()), stats
 
 
 def _retry_button(page: Page):
@@ -292,12 +295,19 @@ def _expand_threads(ctx: BrowserContext, posts: dict[str, dict], records: dict[s
                         quote=None, is_reply=False)
             if head["author"]["handle"]:
                 base["author"] = {**base["author"], **{k: v for k, v in head["author"].items() if v}}
-        for m in members:
-            posts.pop(m, None)
         base["thread"] = [{"id": r["id"], "text": r["text"], "images": r["images"], "videos": r["videos"]}
                           for r in chain[1:]]
         base["thread_ids"] = [r["id"] for r in chain]
-        posts[head["id"]] = base
+        # Replace the thread's first feed post in place; drop its other feed posts.
+        slot = next(m for m in posts if m in members)
+        rebuilt = {}
+        for pid, p in posts.items():
+            if pid == slot:
+                rebuilt[head["id"]] = base
+            elif pid not in members:
+                rebuilt[pid] = p
+        posts.clear()
+        posts.update(rebuilt)
         stats["threads"] += 1
 
 
