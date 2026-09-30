@@ -49,11 +49,25 @@ def _text(result: dict, legacy: dict) -> str:
 def _user(result: dict) -> dict:
     u = ((result.get("core") or {}).get("user_results") or {}).get("result") or {}
     core, leg = u.get("core") or {}, u.get("legacy") or {}
+    rel = u.get("relationship_perspectives") or {}
+    following = rel.get("following", leg.get("following"))
     return {
         "name": core.get("name") or leg.get("name") or "",
         "handle": core.get("screen_name") or leg.get("screen_name") or "",
         "avatar": ((u.get("avatar") or {}).get("image_url") or leg.get("profile_image_url_https")),
+        # About the author, as X shows it to you (None when X didn't say).
+        "you_follow": following if isinstance(following, bool) else None,
+        "followers": leg.get("followers_count"),
+        "verified": bool(u.get("is_blue_verified") or (u.get("verification") or {}).get("verified")
+                         or leg.get("verified")),
+        "bio": (u.get("profile_bio") or {}).get("description") or leg.get("description") or "",
     }
+
+
+def _community_note(result: dict) -> str | None:
+    pivot = result.get("birdwatch_pivot") or {}
+    text = ((pivot.get("subtitle") or {}).get("text") or pivot.get("title") or "").strip()
+    return text or None
 
 
 def _record(result: dict) -> dict | None:
@@ -85,6 +99,7 @@ def _record(result: dict) -> dict | None:
         "conversation_id": legacy.get("conversation_id_str"),
         "self_thread_id": (legacy.get("self_thread") or {}).get("id_str"),
         "quoted_id": quoted.get("rest_id"),
+        "community_note": _community_note(result),
     }
 
 

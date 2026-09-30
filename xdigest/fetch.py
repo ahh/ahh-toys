@@ -230,9 +230,12 @@ def _record_stall(page: Page, stats: dict) -> None:
 def _enrich(posts: dict[str, dict], records: dict[str, dict]) -> None:
     """Fill in what the DOM lacks from X's API data: video files, and the full text of
     long posts (the DOM shows them cut off at "Show more")."""
+    about = ("you_follow", "followers", "verified", "bio")
     for pid, post in posts.items():
         rec = records.get(pid) or {}
         post["videos"] = rec.get("videos", [])
+        post["author"].update({k: rec["author"][k] for k in about if rec.get("author")})
+        post["community_note"] = rec.get("community_note")
         if rec.get("is_long") and rec.get("text"):
             post["text"], post["truncated"] = rec["text"], False
         q = post.get("quote")
@@ -240,6 +243,7 @@ def _enrich(posts: dict[str, dict], records: dict[str, dict]) -> None:
             qrec = records.get(rec.get("quoted_id") or "") or {}
             q["id"] = qrec.get("id")
             q["videos"] = qrec.get("videos", [])
+            q["author"].update({k: qrec["author"][k] for k in about if qrec.get("author")})
             if qrec.get("is_long") and qrec.get("text"):
                 q["text"] = qrec["text"]
 

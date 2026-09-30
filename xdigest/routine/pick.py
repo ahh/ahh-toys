@@ -37,9 +37,41 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
 
 
-def describe(post: dict) -> str:
+def _about(a: dict) -> str:
+    """One line about an author, from what X shows the reader."""
+    bits = []
+    if a.get("you_follow") is not None:
+        bits.append("the reader follows them" if a["you_follow"] else "the reader doesn't follow them")
+    if isinstance(a.get("followers"), int):
+        f = a["followers"]
+        bits.append(f"{f / 1e6:.1f}M followers" if f >= 1e6 else f"{f / 1e3:.1f}K followers" if f >= 1e3
+                    else f"{f} followers")
+    if a.get("verified"):
+        bits.append("verified")
+    return "; ".join(bits)
+
+
+def _age(post: dict, run_id: str) -> str:
+    try:
+        from datetime import datetime, timezone
+        run_t = datetime.strptime(run_id, "%Y-%m-%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        hours = (run_t - datetime.fromisoformat(post["created_at"].replace("Z", "+00:00"))).total_seconds() / 3600
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return ""
+    return f"{hours:.0f} hours old" if hours < 48 else f"{hours / 24:.0f} days old"
+
+
+def describe(post: dict, run_id: str = "") -> str:
     a = post["author"]
     lines = [f"### post {post['id']}", f"Author: {a['name']} (@{a['handle']})"]
+    about = _about(a)
+    if about:
+        lines.append(f"About the author: {about}")
+    if a.get("bio"):
+        lines.append(f"<author_bio>\n{a['bio'][:200]}\n</author_bio>")
+    age = _age(post, run_id)
+    if age:
+        lines.append(f"Posted: {age}")
     if post.get("social_context"):
         lines.append(f"Shown because: {post['social_context']}")
     if post.get("is_reply"):
@@ -50,10 +82,15 @@ def describe(post: dict) -> str:
         lines.append("Has a video (only its thumbnail, if any, is attached).")
     q = post.get("quote")
     if q:
-        lines.append(f"Quotes a post by {q['author']['name']} (@{q['author']['handle']}):\n"
+        qabout = _about(q["author"])
+        lines.append(f"Quotes a post by {q['author']['name']} (@{q['author']['handle']})"
+                     + (f" [{qabout}]" if qabout else "") + ":\n"
                      f"<quoted_text>\n{q['text'] or '(no text)'}\n</quoted_text>")
     if post.get("card"):
         lines.append(f"Link card:\n<card>\n{post['card']['text']}\n</card>")
+    if post.get("community_note"):
+        lines.append(f"X Community Note attached (readers added context):\n<community_note>\n"
+                     f"{post['community_note']}\n</community_note>")
     thread = post.get("thread") or []
     if thread:
         lines.append(f"This post starts a thread of {len(thread) + 1} posts by the same author. "
@@ -70,11 +107,12 @@ def describe(post: dict) -> str:
 
 def prepare() -> None:
     posts = read_jsonl(ROOT / "posts.jsonl")
+    run_id = json.loads((ROOT / "run.json").read_text()).get("run_id", "")
     BATCHES.mkdir(exist_ok=True)
     n = math.ceil(len(posts) / BATCH_SIZE)
     for i in range(n):
         chunk = posts[i * BATCH_SIZE:(i + 1) * BATCH_SIZE]
-        (BATCHES / f"batch-{i:02d}.md").write_text("\n\n".join(describe(p) for p in chunk) + "\n")
+        (BATCHES / f"batch-{i:02d}.md").write_text("\n\n".join(describe(p, run_id) for p in chunk) + "\n")
     print(f"{len(posts)} posts -> {n} batches in {BATCHES}/ "
           f"(write scores to batches/batch-NN.scores.jsonl)")
 
