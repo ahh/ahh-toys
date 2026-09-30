@@ -1,6 +1,7 @@
 """X For You digest: fetch on this Mac -> score in a Claude routine -> email, Telegram, or Signal.
 
     uv run xdigest.py check          # which setup steps are done (no secrets printed)
+    uv run xdigest.py scores --author someone   # how past posts were scored
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)
     uv run xdigest.py fetch          # scroll For You, save posts + images locally (no push)
@@ -112,6 +113,37 @@ def cmd_check(args) -> None:
            "uv run xdigest.py install-schedule")
     print("  ? scoring routine: can't be checked from here; see ROUTINE_PROMPT.md")
     print("all set" if ok_all else "some steps remain")
+
+
+def cmd_scores(args) -> None:
+    """Search the archive of every scored post."""
+    if not store.SCORE_LOG.exists():
+        raise SystemExit("no scored posts yet")
+    picked = set()
+    for d in store.RUNS_DIR.iterdir():
+        if (d / "picks.jsonl").exists():
+            picked |= {r["id"] for r in store.read_jsonl(d / "picks.jsonl")}
+    wanted = {a.lower().lstrip("@") for a in args.author}
+    rows = []
+    for r in store.read_jsonl(store.SCORE_LOG):
+        a, s = r.get("author") or {}, r.get("scoring") or {}
+        if wanted and (a.get("handle") or "").lower() not in wanted:
+            continue
+        if args.rejected and not s.get("rejected"):
+            continue
+        if args.min is not None and (s.get("rejected") or s.get("score", 0) < args.min):
+            continue
+        rows.append(r)
+    rows = rows[-args.limit:] if args.limit else rows
+    for r in rows:
+        a, s = r.get("author") or {}, r.get("scoring") or {}
+        verdict = f"rejected:{s.get('reject_reason')}" if s.get("rejected") else f"{s.get('score')}/10 {s.get('category')}"
+        sent = "SENT " if r.get("id") in picked else "     "
+        print(f"{r.get('run', '')[:10]}  {sent}{verdict:<18} @{a.get('handle', '?'):<16} {s.get('why', '')}")
+        if args.text:
+            print("      " + " ".join((r.get("text") or "").split())[:300])
+        print(f"      {r.get('url', '')}")
+    print(f"{len(rows)} post(s)")
 
 
 def cmd_chat_id(args) -> None:
@@ -269,6 +301,13 @@ def main() -> None:
     for name, fn in [("check", cmd_check), ("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
                      ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
+    p = sub.add_parser("scores", help="search how past posts were scored")
+    p.add_argument("--author", action="append", default=[], help="handle (repeatable), e.g. --author dril")
+    p.add_argument("--min", type=int, help="only posts that scored at least this")
+    p.add_argument("--rejected", action="store_true", help="only rejected posts")
+    p.add_argument("--text", action="store_true", help="also show the post text")
+    p.add_argument("--limit", type=int, default=50, help="show the most recent N (0 = all; default 50)")
+    p.set_defaults(fn=cmd_scores)
     p = sub.add_parser("install-schedule")
     p.add_argument("--at", default="07:30,10:30,13:30,16:30,19:30",
                    help="comma-separated local times, HH:MM (default 5 runs, every 3h from 07:30)")
