@@ -126,6 +126,13 @@ def card_html(post: dict) -> tuple[str, list[dict]]:
     if post.get("text"):
         body.append(f'<div class="text">{_linkify(post["text"])}</div>')
     body.append(_media(post, slots))
+    card = post.get("card") or {}
+    if card.get("text") or card.get("image"):
+        img = _data_uri(card["image"]) if card.get("image") else ""
+        lines = [l.strip() for l in (card.get("text") or "").splitlines() if l.strip()][:3]
+        body.append('<div class="quote" style="padding:0;overflow:hidden">'
+                    + (f'<img src="{img}" style="width:100%;display:block">' if img else "")
+                    + f'<div style="padding:8px 12px;font-size:14px">🔗 {"<br>".join(html.escape(l) for l in lines)}</div></div>')
     q = post.get("quote")
     if q:
         qparts = [_who(q["author"])]

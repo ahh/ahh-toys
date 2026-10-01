@@ -67,6 +67,9 @@ def _body(post: dict) -> _Text:
         if q.get("text"):
             t.add("\n")
             t.add(q["text"], "ITALIC")
+    card = post.get("card") or {}
+    if card.get("text") or card.get("href"):
+        t.add("\n\n🔗 " + " ".join((card.get("text") or "").split())[:200] + " " + (card.get("href") or ""))
     for n, part in enumerate(post.get("thread") or [], 2):
         t.add("\n\n" + xdata.numbered(n, part.get("text")))
     t.add(f"\n\noriginal → {post['url']}")

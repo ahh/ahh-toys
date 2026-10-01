@@ -150,6 +150,7 @@ def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
     if post.get("text"):
         parts.append(f'<div style="font:17px/1.45 {FONT};color:#0f1419">{_linkify(post["text"])}</div>')
     parts.append(_media(post, url, tmp, attachments))
+    parts.append(_card(post.get("card")))
     q = post.get("quote")
     if q:
         qparts = [_who(q["author"], small=True)]
@@ -169,6 +170,20 @@ def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
     return (f'<div style="max-width:560px;margin:0 auto;padding:4px 0">{"".join(parts)}</div>')
 
 
+def _card(card: dict | None) -> str:
+    """A link card (the article/site preview X shows under a post) as a tappable box."""
+    if not card or not (card.get("text") or card.get("image")):
+        return ""
+    href = html.escape(card.get("href") or "")
+    img = (f'<img src="{html.escape(card["image"])}" width="100%" alt="" '
+           f'style="display:block;width:100%;max-width:560px">' if card.get("image") else "")
+    lines = [l.strip() for l in (card.get("text") or "").splitlines() if l.strip()]
+    text = "<br>".join(html.escape(l) for l in lines[:3])
+    box = (f'<div style="margin-top:10px;border:1px solid #cfd9de;border-radius:12px;overflow:hidden">{img}'
+           f'<div style="padding:8px 12px;font:14px/1.35 {FONT};color:#0f1419">🔗 {text}</div></div>')
+    return f'<a href="{href}" style="text-decoration:none;color:inherit">{box}</a>' if href else box
+
+
 def _subject(post: dict) -> str:
     text = " ".join((post.get("text") or (post.get("quote") or {}).get("text") or "").split())
     snippet = text[:80] + ("…" if len(text) > 80 else "")
@@ -179,11 +194,14 @@ def _subject(post: dict) -> str:
 
 
 def _plain(post: dict) -> str:
+    card = post.get("card") or {}
     lines = ([f'🔍 {post["note"]}', ""] if post.get("note") else []) + \
         [f'{post["author"]["name"]} @{post["author"]["handle"]}', "", post.get("text") or ""]
     q = post.get("quote")
     if q:
         lines += ["", f'> {q["author"]["name"]} @{q["author"]["handle"]}', "> " + (q.get("text") or "")]
+    if card.get("text") or card.get("href"):
+        lines += ["", "🔗 " + " ".join((card.get("text") or "").split()) + " " + (card.get("href") or "")]
     for n, part in enumerate(post.get("thread") or [], 2):
         lines += ["", xdata.numbered(n, part.get("text"))]
     return "\n".join(lines + ["", post["url"]])

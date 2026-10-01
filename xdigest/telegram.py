@@ -65,6 +65,10 @@ def _caption(post: dict) -> str:
         qa = q["author"]
         parts.append(f"<blockquote><b>{esc(qa['name'])}</b> @{esc(qa['handle'])}"
                      + (f"\n{esc(q['text'])}" if q.get("text") else "") + "</blockquote>")
+    card = post.get("card") or {}
+    if card.get("text") or card.get("href"):
+        title = esc(" ".join((card.get("text") or "link").split())[:200])
+        parts.append(f'🔗 <a href="{esc(card["href"])}">{title}</a>' if card.get("href") else f"🔗 {title}")
     for n, part in enumerate(post.get("thread") or [], 2):
         parts.append(esc(xdata.numbered(n, part.get("text"))))
     parts.append(f'<a href="{esc(post["url"])}">original →</a>')

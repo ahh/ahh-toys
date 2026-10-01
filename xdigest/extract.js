@@ -71,6 +71,7 @@
       card: card ? {
         text: card.innerText.slice(0, 300),
         href: card.querySelector('a')?.href || null,
+        image: card.querySelector('img')?.src || null,
       } : null,
       social_context: a.querySelector('[data-testid="socialContext"]')?.innerText || null,
       is_reply: /(^|\n)Replying to/.test(a.innerText),
