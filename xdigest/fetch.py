@@ -7,6 +7,8 @@ only other pages it opens are threads' own post pages, to read the rest of a thr
 No model ever sees page content while this browser is open.
 """
 
+import json
+import os
 import random
 import re
 import subprocess
@@ -94,29 +96,105 @@ def is_logged_in() -> bool:
             ctx.close()
 
 
-def _select_for_you(page: Page) -> None:
-    tab = page.get_by_role("tab", name="For you")
-    if tab.count() and tab.first.get_attribute("aria-selected") != "true":
+def _keep_json(response, into: list) -> None:
+    try:
+        into.append(response.json())
+    except Exception:
+        pass
+
+
+def _select_tab(page: Page, name: str) -> None:
+    """Select a home timeline tab by its visible label (the Following tab's accessible
+    name includes extra text) and make sure it actually became selected."""
+    tab = page.get_by_role("tab").filter(has_text=re.compile(rf"^\s*{re.escape(name)}\s*$"))
+    try:
+        tab.first.wait_for(timeout=30_000)  # the tabs render a moment after the page loads
+    except Exception:
+        pass
+    if not tab.count():
+        raise RuntimeError(f"no {name!r} tab on the home page")
+    if tab.first.get_attribute("aria-selected") != "true":
         tab.first.click()
-        time.sleep(2)
+        time.sleep(random.uniform(2, 3))
+        if tab.first.get_attribute("aria-selected") != "true":
+            raise RuntimeError(f"clicked the {name!r} tab but it didn't become selected")
+        page.mouse.wheel(0, -5000)  # a fresh tab starts at the top
+        time.sleep(1)
+    try:
+        page.wait_for_selector('article[data-testid="tweet"]', timeout=30_000)
+    except Exception:
+        pass
 
 
-def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = False) -> tuple[list[dict], dict]:
-    """Return (new posts, stats). Posts already in seen.json are skipped."""
+def _scan(page: Page, source: str, posts: dict, counted: set, seen: dict, stats: dict,
+          want_new: int, stop_after_seen: int) -> str:
+    """Scroll the current tab, adding up to `want_new` unseen posts (tagged with
+    `source`). Returns why it stopped: "enough", "caught_up" (a run of posts already
+    seen) or "stalled"."""
+    added = consecutive_seen = stalled = 0
+    while added < want_new:
+        if consecutive_seen >= stop_after_seen:
+            return "caught_up"
+        if stalled >= STALL_SCROLLS:
+            if stats["recoveries"] >= MAX_RECOVERIES:
+                _record_stall(page, stats)
+                return "stalled"
+            _recover(page, stats)
+            stalled = 0
+        found_new = False
+        new_this_pass = 0
+        for post in page.evaluate(EXTRACT_JS):
+            key = post["id"] or (post["author"]["handle"] + post["text"][:40])
+            if key in counted:
+                continue
+            counted.add(key)
+            found_new = True
+            if post["is_ad"]:
+                stats["ads"] += 1
+            elif not post["id"]:
+                stats["no_id"] += 1
+            elif post["id"] in seen or post["id"] in posts:
+                stats["already_seen"] += 1
+                consecutive_seen += 1
+            elif added < want_new:
+                consecutive_seen = 0
+                posts[post["id"]] = {**post, "source": source}
+                added += 1
+                new_this_pass += 1
+        stalled = 0 if found_new else stalled + 1
+        time.sleep(sum(random.uniform(*READ_PAUSE) for _ in range(new_this_pass)))
+
+        page.mouse.wheel(0, random.randint(600, 1000))
+        stats["scrolls"] += 1
+        time.sleep(random.uniform(1.2, 2.8))
+        _check_state(page)
+    return "enough"
+
+
+def fetch(max_posts: int = 60, max_following: int = 100, min_for_you: int = 15,
+          stop_after_seen: int = 10, headless: bool = False) -> tuple[list[dict], dict]:
+    """Return (new posts, stats). Reads the Following tab first, until it reaches posts
+    already seen (it's chronological, so that means caught up) or `max_following`; then
+    For You until the batch has `max_posts` posts and at least `min_for_you` from For
+    You. Posts already in seen.json are skipped."""
     seen = store.load_seen()
     posts: dict[str, dict] = {}
-    stats = {"ads": 0, "already_seen": 0, "no_id": 0, "scrolls": 0}
-    consecutive_seen = 0
-    stalled = 0
+    stats = {"ads": 0, "already_seen": 0, "no_id": 0, "scrolls": 0, "recoveries": 0, "retry_clicks": 0}
 
     with sync_playwright() as p:
         ctx = _open(p, headless=headless)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        # The timeline's own API responses carry video file URLs, which the DOM
-        # (blob: players) does not. Keep them to read after scrolling.
-        timeline_responses = []
-        page.on("response", lambda r: timeline_responses.append(r)
-                if "/graphql/" in r.url and "Timeline" in r.url else None)
+        # The timelines' own API responses carry video file URLs and other data the DOM
+        # lacks. Read each body as it arrives: Chrome drops older bodies from memory, so
+        # reading them after scrolling loses most of a long session.
+        timeline_data = []
+        stats["api_ops"] = {}
+        def on_response(r):
+            if "/graphql/" in r.url and "Timeline" in r.url:
+                op = r.url.split("?")[0].rsplit("/", 1)[-1]
+                stats["api_ops"][op] = stats["api_ops"].get(op, 0) + 1
+                _keep_json(r, timeline_data)
+        page.on("response", on_response)
         try:
             page.goto("https://x.com/home", wait_until="domcontentloaded")
             try:
@@ -124,53 +202,27 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
             except Exception:
                 pass
             _check_state(page)
-            _select_for_you(page)
-            page.wait_for_selector('article[data-testid="tweet"]', timeout=30_000)
 
             counted: set[str] = set()
-            stats.update(recoveries=0, retry_clicks=0)
-            while len(posts) < max_posts and consecutive_seen < stop_after_seen:
-                if stalled >= STALL_SCROLLS:
-                    if stats["recoveries"] >= MAX_RECOVERIES:
-                        _record_stall(page, stats)
-                        break
-                    _recover(page, stats)
-                    stalled = 0
-                found_new = False
-                new_this_pass = 0
-                for post in page.evaluate(EXTRACT_JS):
-                    key = post["id"] or (post["author"]["handle"] + post["text"][:40])
-                    if key in counted:
-                        continue
-                    counted.add(key)
-                    found_new = True
-                    if post["is_ad"]:
-                        stats["ads"] += 1
-                    elif not post["id"]:
-                        stats["no_id"] += 1
-                    elif post["id"] in seen:
-                        stats["already_seen"] += 1
-                        consecutive_seen += 1
-                    else:
-                        consecutive_seen = 0
-                        posts[post["id"]] = post
-                        new_this_pass += 1
-                stalled = 0 if found_new else stalled + 1
-                time.sleep(sum(random.uniform(*READ_PAUSE) for _ in range(new_this_pass)))
+            if max_following > 0:
+                _select_tab(page, "Following")
+                stats["following_stop"] = _scan(page, "following", posts, counted, seen, stats,
+                                                max_following, stop_after_seen)
+            stats["following"] = len(posts)
+            _select_tab(page, "For you")
+            want = max(min_for_you, max_posts - len(posts))
+            stats["for_you_stop"] = _scan(page, "for_you", posts, counted, seen, stats, want, 20)
+            stats["for_you"] = len(posts) - stats["following"]
 
-                page.mouse.wheel(0, random.randint(600, 1000))
-                stats["scrolls"] += 1
-                time.sleep(random.uniform(1.2, 2.8))
-                _check_state(page)
-            # The last scroll can overshoot max_posts; trim before enriching, so nothing
-            # built below (e.g. a merged thread) gets cut afterwards.
-            posts = dict(list(posts.items())[:max_posts])
             records: dict[str, dict] = {}
-            for r in timeline_responses:
-                try:
-                    xdata.collect(r.json(), records)
-                except Exception:
-                    continue
+            stats["api_responses"] = len(timeline_data)
+            for data in timeline_data:
+                if os.environ.get("XDIGEST_DEBUG_DUMP"):  # raw samples for checking X's format
+                    dump = store.DATA_DIR / "debug-timeline.json"
+                    raw = json.dumps(data)
+                    if not dump.exists() or len(raw) > dump.stat().st_size:
+                        dump.write_text(raw)
+                xdata.collect(data, records)
             # Extras: if X's data format shifts, keep the run and skip them.
             for step in (lambda: _enrich(posts, records), lambda: _expand_threads(ctx, posts, records, stats)):
                 try:
@@ -183,11 +235,6 @@ def fetch(max_posts: int = 300, stop_after_seen: int = 20, headless: bool = Fals
             ctx.close()
 
     stats.setdefault("stall", None)
-    stats["stop_reason"] = (
-        "max_posts" if len(posts) >= max_posts
-        else "seen_streak" if consecutive_seen >= stop_after_seen
-        else "stalled"
-    )
     return list(posts.values()), stats
 
 
@@ -252,7 +299,7 @@ def _thread_records(ctx: BrowserContext, root_id: str) -> dict[str, dict]:
     """Open the thread's post page in a second tab and parse what it loads."""
     responses = []
     page = ctx.new_page()
-    page.on("response", lambda r: responses.append(r) if "/graphql/" in r.url and "TweetDetail" in r.url else None)
+    page.on("response", lambda r: _keep_json(r, responses) if "/graphql/" in r.url and "TweetDetail" in r.url else None)
     records: dict[str, dict] = {}
     try:
         page.goto(f"https://x.com/i/status/{root_id}", wait_until="domcontentloaded")
@@ -261,11 +308,8 @@ def _thread_records(ctx: BrowserContext, root_id: str) -> dict[str, dict]:
             time.sleep(0.5)
         time.sleep(random.uniform(2, 4))
         _check_state(page)
-        for r in responses:
-            try:
-                xdata.collect(r.json(), records)
-            except Exception:
-                continue
+        for data in responses:
+            xdata.collect(data, records)
     finally:
         page.close()
     return records

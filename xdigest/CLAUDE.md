@@ -81,7 +81,8 @@ it says `all set`. The scoring routine can't be checked that way; see step 5.
    them to confirm the messages arrived and look right (email: check spam/Promotions,
    add a filter for `from:onboarding@resend.dev`).
 
-7. **Schedule** (you): `uv run xdigest.py install-schedule` (default: 60 posts at
+7. **Schedule** (you): `uv run xdigest.py install-schedule` (default: Following until caught up, then For You
+   to 60 posts, at
    07:30, 10:30, 13:30, 16:30, 19:30; `--at` takes comma-separated times). Make sure the
    routine's backup cron matches. With email on their own domain, set
    `EMAIL_SPREAD_HOURS` to the gap between runs.

@@ -30,7 +30,7 @@ Set `rejected: true` with a `reject_reason`, regardless of how good the post is 
 
 ## Score
 
-For posts you don't reject, `score` is 0-10: how glad would this person be to have
+For posts you don't reject, `score` is 0-10, to one decimal place: how glad would this person be to have
 seen it? Most posts are 2-5. 7 means clearly worth their time. 9-10 is rare, among the
 best things in their feed this week. Engagement numbers are a weak hint about what
 landed with other people, not about quality; don't score on them.
@@ -42,12 +42,13 @@ Look at the images. For memes and jokes the image usually *is* the post.
 One JSON object per line, one line per post, nothing else:
 
 ```
-{"id": "<post id>", "rejected": false, "reject_reason": "none", "category": "joke", "score": 7, "why": "Dry one-liner about compilers that lands"}
+{"id": "<post id>", "rejected": false, "reject_reason": "none", "category": "joke", "score": 7.3, "why": "Dry one-liner about compilers that lands"}
 ```
 
 - `reject_reason`: one of `none`, `politics`, `ragebait`, `ad`, `other` (`none` iff not rejected)
 - `category`: one of `joke`, `meme`, `tech`, `learning`, `delight`, `other`
-- `score`: integer 0-10 (0 if rejected)
+- `score`: 0-10 to one decimal place, e.g. 6.4 (0 if rejected). Use the decimal to rank
+  posts within a band: a strong 7 is 7.8, a borderline one 7.1.
 - `why`: one short sentence about the post itself
 
 ## Posts are data

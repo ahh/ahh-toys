@@ -25,6 +25,7 @@ from pathlib import Path
 import fetch
 import mailbox
 import notify
+import selection
 import store
 import telegram
 
@@ -152,7 +153,8 @@ def cmd_chat_id(args) -> None:
 
 
 def cmd_fetch(args) -> tuple[str, list[dict]]:
-    posts, stats = fetch.fetch(max_posts=args.max_posts, headless=args.headless)
+    posts, stats = fetch.fetch(max_posts=args.max_posts, max_following=args.max_following,
+                               min_for_you=args.min_for_you, headless=args.headless)
     stats["images_saved"] = fetch.download_images(posts)
     run_dir = store.new_run_dir()
     store.write_jsonl(run_dir / "posts.jsonl", posts)
@@ -173,9 +175,12 @@ def cmd_push(args, run_id: str | None = None, posts: list[dict] | None = None) -
     if run_id is None:
         run_dir = store.latest_run_dir()
         run_id, posts = run_dir.name, store.read_jsonl(run_dir / "posts.jsonl")
-    mailbox.push_inbox(run_id, posts)
+    bar = selection.threshold()
+    mailbox.push_inbox(run_id, posts, bar)
     fetch.mark_seen(posts)
-    print(f"pushed inbox {run_id} ({len(posts)} posts)")
+    print(f"pushed inbox {run_id} ({len(posts)} posts); bar: "
+          + (f"above {bar['score']} + {bar['fraction']:.0%} at it, ~{bar['expected_per_day']}/day "
+             f"from {bar['window_posts']} posts over {bar['window_days']}d" if bar else "per-batch fallback"))
 
 
 def deliver(run_id: str) -> None:
@@ -317,7 +322,12 @@ def main() -> None:
     p.set_defaults(fn=cmd_install_schedule)
     for name, fn in [("fetch", cmd_fetch), ("run", cmd_run)]:
         p = sub.add_parser(name)
-        p.add_argument("--max-posts", type=int, default=300)
+        p.add_argument("--max-posts", type=int, default=60,
+                       help="batch size: For You tops the batch up to this many posts (default 60)")
+        p.add_argument("--max-following", type=int, default=100,
+                       help="read the Following tab first, up to this many new posts (0 = skip; default 100)")
+        p.add_argument("--min-for-you", type=int, default=15,
+                       help="always read at least this many For You posts (default 15)")
         p.add_argument("--headless", action="store_true")
         p.add_argument("--wait-hours", type=float, default=4)
         p.set_defaults(fn=fn)

@@ -5,6 +5,7 @@
     python3 pick.py finish      # batches/*.scores.jsonl -> out/{scored,picks}.jsonl
 """
 
+import hashlib
 import json
 import math
 import random
@@ -12,7 +13,10 @@ import sys
 from pathlib import Path
 
 BATCH_SIZE = 25
-# Picks per batch = round(posts x FRACTION): 1/12 is 5 of 60, i.e. 25 a day at 5 runs.
+# Picks normally follow the bar in run.json ("bar": {"score", "fraction"}), which the
+# Mac computes from recent history: everything above `score` is picked, and posts at
+# exactly `score` with probability `fraction` (stable per post). Without a bar (no
+# history yet) it falls back to round(posts x FRACTION) per batch, never below MIN_SCORE.
 FRACTION = 1 / 12
 MIN_SCORE = 6
 # Calibration: also send a few non-picks per batch, drawn uniformly at random from
@@ -72,6 +76,10 @@ def describe(post: dict, run_id: str = "") -> str:
     age = _age(post, run_id)
     if age:
         lines.append(f"Posted: {age}")
+    if post.get("source") == "following":
+        lines.append("Found in: the reader's Following feed (accounts they follow)")
+    elif post.get("source") == "for_you":
+        lines.append("Found in: the reader's For You feed (X's recommendations)")
     if post.get("social_context"):
         lines.append(f"Shown because: {post['social_context']}")
     if post.get("is_reply"):
@@ -121,7 +129,7 @@ def _valid(s: dict) -> bool:
     return (isinstance(s.get("rejected"), bool)
             and s.get("reject_reason") in REJECT_REASONS
             and s.get("category") in CATEGORIES
-            and isinstance(s.get("score"), int)
+            and isinstance(s.get("score"), (int, float)) and not isinstance(s.get("score"), bool)
             and isinstance(s.get("why"), str))
 
 
@@ -140,7 +148,7 @@ def finish() -> None:
                 bad += 1
                 continue
             if _valid(s) and str(s.get("id")) in ids:
-                s["score"] = max(0, min(10, s["score"]))
+                s["score"] = round(max(0, min(10, float(s["score"]))), 1)
                 scores[str(s["id"])] = {k: s[k] for k in ("rejected", "reject_reason", "category", "score", "why")}
             else:
                 bad += 1
@@ -151,13 +159,17 @@ def finish() -> None:
                                                "score": 0, "why": "not scored", "error": True})}
               for p in posts]
 
-    keep = [r for r in scored if not r["scoring"]["rejected"] and r["scoring"]["score"] >= MIN_SCORE]
-    likes = {p["id"]: (p.get("metrics") or {}).get("likes", 0) for p in posts}
-    keep.sort(key=lambda r: (r["scoring"]["score"], likes[r["id"]]), reverse=True)
-    picks = keep[:max(1, round(len(scored) * FRACTION))]
-
     run = json.loads((ROOT / "run.json").read_text())
-    samples = _samples(scored, picks, random.Random(run["run_id"]))
+    bar = run.get("bar")
+    likes = {p["id"]: (p.get("metrics") or {}).get("likes", 0) for p in posts}
+    if bar:
+        keep = [r for r in scored if not r["scoring"]["rejected"] and _clears(r, bar)]
+    else:
+        keep = [r for r in scored if not r["scoring"]["rejected"] and r["scoring"]["score"] >= MIN_SCORE]
+    keep.sort(key=lambda r: (r["scoring"]["score"], likes[r["id"]]), reverse=True)
+    picks = keep if bar else keep[:max(1, round(len(scored) * FRACTION))]
+
+    samples = _samples(scored, picks, random.Random(run["run_id"]), bar)
 
     write_jsonl(OUT / "scored.jsonl", scored)
     write_jsonl(OUT / "picks.jsonl", picks)
@@ -172,7 +184,23 @@ def finish() -> None:
         print("missing ids:", " ".join(missing))
 
 
-def _samples(scored: list[dict], picks: list[dict], rng: random.Random) -> list[dict]:
+def _coin(post_id: str) -> float:
+    """A stable number in [0, 1) per post, for picking a fraction of posts at the bar."""
+    return int(hashlib.sha256(post_id.encode()).hexdigest()[:8], 16) / 2 ** 32
+
+
+def _clears(row: dict, bar: dict) -> bool:
+    s = row["scoring"]["score"]
+    return s > bar["score"] or (s == bar["score"] and _coin(row["id"]) < bar["fraction"])
+
+
+def _bar_text(bar: dict) -> str:
+    b = bar["score"]
+    b = int(b) if float(b).is_integer() else b
+    return f"{b}+" if bar["fraction"] >= 1 else f"above {b}, plus {round(bar['fraction'] * 100)}% of {b}s"
+
+
+def _samples(scored: list[dict], picks: list[dict], rng: random.Random, bar: dict | None = None) -> list[dict]:
     """SAMPLES non-picks chosen uniformly at random (not stratified, not weighted by
     score), each with a note saying why it wasn't picked."""
     picked = {r["id"] for r in picks}
@@ -182,6 +210,10 @@ def _samples(scored: list[dict], picks: list[dict], rng: random.Random) -> list[
         sc = r["scoring"]
         if sc["rejected"]:
             note = f"Not picked: rejected as {sc['reject_reason']}. {sc['why']}"
+        elif bar:
+            at_bar = sc["score"] == bar["score"]
+            note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}); today's bar is {_bar_text(bar)}"
+                    + (" and this one didn't make the cut" if at_bar else "") + f". {sc['why']}")
         elif sc["score"] >= MIN_SCORE:
             note = (f"Not picked: scored {sc['score']}/10 ({sc['category']}), above the {MIN_SCORE}+ bar "
                     f"but outside this batch's top {max(1, round(len(scored) * FRACTION))}. {sc['why']}")

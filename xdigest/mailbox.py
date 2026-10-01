@@ -48,11 +48,11 @@ def outbox_branch(run_id: str) -> str:
     return f"claude/outbox-{run_id}"
 
 
-def push_inbox(run_id: str, posts: list[dict]) -> None:
+def push_inbox(run_id: str, posts: list[dict], bar: dict | None = None) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         store.write_jsonl(root / "posts.jsonl", posts)
-        (root / "run.json").write_text(json.dumps({"run_id": run_id, "n_posts": len(posts)}, indent=2))
+        (root / "run.json").write_text(json.dumps({"run_id": run_id, "n_posts": len(posts), "bar": bar}, indent=2))
         (root / "images").mkdir()
         for post in posts:
             for name in post.get("image_files", []):

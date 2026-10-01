@@ -1,6 +1,6 @@
 # xdigest
 
-A daily digest of the best of your X (Twitter) "For You" feed (about 25 posts a day), delivered by
+A daily digest of the best of your X (Twitter) feed, Following and For You (about 25 posts a day), delivered by
 email, Telegram, or Signal. Your Mac reads the feed, a Claude routine scores every post
 against a rubric you write (no politics, no ragebait, more jokes/tech/delight, or
 whatever you like), and each pick arrives as its own message:
@@ -25,7 +25,7 @@ your own risk.
 your Mac (5x a day, launchd)          github.com/<you>/xdigest-data (private)     Claude routine (cloud, fired by the Mac)
 fetch: scroll For You in a     ──▶   inbox  (one commit: today's posts,    ──▶   score every post with
   dedicated Chrome profile             images, rubric, helper script)             subagents against SCORING.md;
-                                                                                  pick the top ~8%
+                                                                                  pick what clears the bar
 deliver: email/Telegram/Signal ◀──   claude/outbox-<run>  (scores, picks)  ◀──   push outbox
   + archive scores locally,
   delete the branch
@@ -217,11 +217,14 @@ uv run xdigest.py deliver                           # picks arrive by email/Tele
 uv run xdigest.py install-schedule                  # 5x a day from now on
 ```
 
-By default the schedule runs at 07:30, 10:30, 13:30, 16:30 and 19:30, reading 60 posts
-each time (short sessions are gentler on X than one long scroll). Each run fetches,
-pushes, fires the routine, waits up to 2 hours for scores, and sends the picks.
-Change it with `--at 08:00,12:00,18:00`, `--max-posts` and `--wait-hours` (keep the
-wait shorter than the gap between runs). For email with your own domain, set
+By default the schedule runs at 07:30, 10:30, 13:30, 16:30 and 19:30 (short sessions are
+gentler on X than one long scroll). Each run first reads your **Following** tab until it
+reaches posts it has already seen (it's chronological, so that means caught up), up to
+100 posts, then tops the batch up from **For You** to 60 posts, with at least 15 from For
+You. Then it pushes, fires the routine, waits up to 2 hours for scores, and sends the
+picks. Change it with `--at 08:00,12:00,18:00` and `--wait-hours` (keep the wait shorter
+than the gap between runs); `run` also takes `--max-posts`, `--max-following` and
+`--min-for-you`. For email with your own domain, set
 `EMAIL_SPREAD_HOURS` to the gap between runs (3 by default) for a continuous trickle.
 Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
 human check, you'll get a message saying so; run `login` again.
@@ -232,9 +235,13 @@ human check, you'll get a message saying so; run `login` again.
   you: it goes to the routine with each batch (through your private data repo) and is
   never committed here. Start from the default: `cp routine/SCORING.default.md
   ~/.config/xdigest/SCORING.md`. Without a copy, the default is used.
-- **How many:** `FRACTION` (default 1/12: 5 picks per 60-post batch, 25 a day) and `MIN_SCORE` (default 6/10) in
-  `routine/pick.py`; `install-schedule --max-posts` (default 60 per run) for how much of
-  the feed to read.
+- **How many:** picks aren't a fixed number per batch. Before each push, the Mac looks
+  at the last 3 days of scores and sets a bar that would have produced
+  `XDIGEST_PICKS_PER_DAY` (default 25) picks a day; every post at or above it is sent,
+  so good batches send more and quiet ones fewer. Scores have one decimal; exact ties
+  at the bar are sent with the probability that hits the target (stable per post). The
+  bar never drops below 5 (`selection.py`). With under half a day of history it falls
+  back to the top 1/12 of each batch (`FRACTION` in `routine/pick.py`).
 - **Calibration samples:** each batch also sends `SAMPLES` (default 1, so 5 a day) posts drawn
   uniformly at random from everything *not* picked, rejects included, each labeled
   with its score or reject reason and the scorer's one-line reason ("[not picked]" in
