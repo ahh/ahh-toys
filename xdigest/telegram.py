@@ -55,6 +55,8 @@ def _caption(post: dict) -> str:
     esc = html.escape
     a = post["author"]
     parts = [f"<i>🔍 {esc(post['note'])}</i>"] if post.get("note") else []
+    if xdata.reposter(post):
+        parts.append(f"🔁 {esc(xdata.reposter(post))} reposted")
     parts.append(f"<b>{esc(a['name'])}</b> @{esc(a['handle'])}")
     if post.get("text"):
         parts.append(esc(post["text"]))

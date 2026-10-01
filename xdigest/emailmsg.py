@@ -140,6 +140,9 @@ def _gif_width(path: Path) -> int | None:
 def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
     url = post["url"]
     parts = []
+    if xdata.reposter(post):
+        parts.append(f'<div style="font:13px {FONT};color:#536471;margin-bottom:6px">🔁 '
+                     f'{html.escape(xdata.reposter(post))} reposted</div>')
     if post.get("note"):
         parts.append(f'<div style="margin-bottom:12px;padding:10px 12px;background:#fff4e5;border-left:3px solid #f5a623;'
                      f'border-radius:6px;font:14px/1.4 {FONT};color:#5c3b00">🔍 {html.escape(post["note"])}</div>')

@@ -136,6 +136,12 @@ def thread_root(rec: dict | None, dom_text: str = "") -> str | None:
     return None
 
 
+def reposter(post: dict) -> str | None:
+    """Display name of whoever reposted this into the feed ("Alice reposted"), if anyone."""
+    ctx = (post.get("social_context") or "").strip()
+    return ctx[: -len(" reposted")] if ctx.endswith(" reposted") else None
+
+
 def numbered(n: int, text: str) -> str:
     """"n/ text", unless the author already numbered it."""
     return text if re.match(r"\s*\(?\d+\s*/", text or "") else f"{n}/ {text or ''}"

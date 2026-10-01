@@ -81,7 +81,12 @@ def describe(post: dict, run_id: str = "") -> str:
     elif post.get("source") == "for_you":
         lines.append("Found in: the reader's For You feed (X's recommendations)")
     if post.get("social_context"):
-        lines.append(f"Shown because: {post['social_context']}")
+        ctx = post["social_context"]
+        if ctx.endswith(" reposted"):
+            lines.append(f"Reposted into the reader's feed by {ctx[:-len(' reposted')]}"
+                         " (the author above is the original poster)")
+        else:
+            lines.append(f"Shown because: {ctx}")
     if post.get("is_reply"):
         lines.append("This post is a reply.")
     lines.append("<post_text>\n" + (post["text"] or "(no text)") +

@@ -52,6 +52,8 @@ def _body(post: dict) -> _Text:
     if post.get("note"):
         t.add(f"🔍 {post['note']}", "ITALIC")
         t.add("\n\n")
+    if xdata.reposter(post):
+        t.add(f"🔁 {xdata.reposter(post)} reposted\n")
     a = post["author"]
     t.add(a["name"], "BOLD")
     t.add(f" @{a['handle']}")

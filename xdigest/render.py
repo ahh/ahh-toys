@@ -118,7 +118,11 @@ def _media(part: dict, slots: list[dict]) -> str:
 def card_html(post: dict) -> tuple[str, list[dict]]:
     """Card HTML plus {url, fit} for each data-video slot, in slot order."""
     slots: list[dict] = []
-    body = [_who(post["author"])]
+    body = []
+    ctx = (post.get("social_context") or "").strip()
+    if ctx.endswith(" reposted"):
+        body.append(f'<div class="n">🔁 {html.escape(ctx)}</div>')
+    body.append(_who(post["author"]))
     if post.get("text"):
         body.append(f'<div class="text">{_linkify(post["text"])}</div>')
     body.append(_media(post, slots))
