@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -35,8 +36,17 @@ def _post(payload: dict) -> dict:
         "Content-Type": "application/json",
         "User-Agent": "xdigest",
     })
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
+    for wait in (30, 90, None):  # ride out brief outages; HTTP errors (4xx) aren't retried
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError:
+            raise
+        except OSError as e:
+            if wait is None:
+                raise
+            print(f"email send failed ({e}); retrying in {wait}s", file=sys.stderr)
+            time.sleep(wait)
 
 
 def _email(subject: str, body_html: str, text: str, attachments: list[dict] = (),
@@ -218,7 +228,7 @@ def send_post(post: dict, send_at: datetime | None = None) -> None:
         _email(_subject(post), body, _plain(post), attachments, send_at)
 
 
-def send_digest(posts: list[dict]) -> None:
+def send_digest(posts: list[dict], already=frozenset(), on_sent=None) -> None:
     spread = float(os.environ.get("EMAIL_SPREAD_HOURS", "12"))
     if spread and "@resend.dev" in (os.environ.get("EMAIL_FROM") or DEFAULT_FROM):
         # Resend only schedules mail from a verified domain; from the shared test sender
@@ -229,7 +239,11 @@ def send_digest(posts: list[dict]) -> None:
     start = datetime.now(timezone.utc)
     step = timedelta(hours=spread) / max(len(posts), 1)
     for i, post in enumerate(posts):
+        if post.get("id") in already:
+            continue
         # The first goes out now; the rest are scheduled by Resend, so the Mac can sleep.
         send_at = start + step * i + timedelta(minutes=1) if spread and i else None
         send_post(post, send_at)
+        if on_sent:
+            on_sent(post)
         time.sleep(0.2)  # Resend allows 10 requests/second

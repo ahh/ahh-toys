@@ -143,8 +143,12 @@ def _receive() -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
 
 
-def send_digest(posts: list[dict]) -> None:
+def send_digest(posts: list[dict], already=frozenset(), on_sent=None) -> None:
     _receive()
     for post in posts:
+        if post.get("id") in already:
+            continue
         send_post(post)
+        if on_sent:
+            on_sent(post)
         time.sleep(1)

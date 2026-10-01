@@ -21,5 +21,6 @@ def send(text: str) -> None:
     _transport().send(text)
 
 
-def send_posts(posts: list[dict]) -> None:
-    _transport().send_digest(posts)
+def send_posts(posts: list[dict], already: set | frozenset = frozenset(), on_sent=None) -> None:
+    """Send posts in order, skipping ids in `already`; on_sent(post) after each one."""
+    _transport().send_digest(posts, already, on_sent)

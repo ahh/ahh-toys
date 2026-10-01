@@ -103,9 +103,13 @@ def send_post(post: dict) -> None:
         send(fallback_link(post["url"]), preview=True)
 
 
-def send_digest(posts: list[dict]) -> None:
+def send_digest(posts: list[dict], already=frozenset(), on_sent=None) -> None:
     for post in posts:
+        if post.get("id") in already:
+            continue
         send_post(post)
+        if on_sent:
+            on_sent(post)
         time.sleep(3)  # a media group counts as several messages against rate limits
 
 

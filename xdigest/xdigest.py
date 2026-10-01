@@ -71,7 +71,7 @@ def cmd_check(args) -> None:
         try:
             mailbox._git("ls-remote", mailbox._repo_url())
             report(True, f"data repo {os.environ['XDIGEST_DATA_REPO']} reachable")
-        except subprocess.CalledProcessError:
+        except mailbox.GitError:
             report(False, "data repo reachable", "gh repo create <name> --private --add-readme")
 
     if transport == "email":
@@ -203,8 +203,16 @@ def deliver(run_id: str) -> None:
         order = sorted([((i + 0.5) / max(len(picks), 1), 0, p) for i, p in enumerate(picks)] +
                        [((j + 1) / (len(samples) + 1), 1, p) for j, p in enumerate(samples)],
                        key=lambda t: t[:2])
+        # Record each post as it goes out, so a failure partway through (network drop)
+        # resumes where it stopped next run instead of resending the batch.
+        sent_ids_file = run_dir / "sent_ids"
+        already = set(sent_ids_file.read_text().split()) if sent_ids_file.exists() else set()
+
+        def record(p: dict) -> None:
+            with open(sent_ids_file, "a") as f:
+                f.write(f"{p.get('id')}\n")
         if order:
-            notify.send_posts([p for _, _, p in order])
+            notify.send_posts([p for _, _, p in order], already, record)
         (run_dir / "sent").touch()
 
     if not (run_dir / "outbox.json").exists():  # archive each run once, even if re-scored

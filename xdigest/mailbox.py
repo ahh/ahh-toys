@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -38,10 +39,29 @@ def _repo_url() -> str:
     return f"https://github.com/{repo}.git"
 
 
+class GitError(RuntimeError):
+    pass
+
+
+# Network commands get retried: a brief outage (Wi-Fi blip, laptop just woke) shouldn't
+# sink a run. Waits between attempts, in seconds.
+RETRY_WAITS = (30, 90, 180)
+NETWORK_COMMANDS = {"ls-remote", "fetch", "push"}
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     # Authenticate with the gh CLI's token without touching global git config.
     cmd = ["git", "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential", *args]
-    return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True).stdout
+    network = bool(NETWORK_COMMANDS & set(args))
+    for wait in (*RETRY_WAITS, None) if network else (None,):
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+        if proc.returncode == 0:
+            return proc.stdout
+        reason = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or ["no output"]
+        if wait is None:
+            raise GitError(f"git {' '.join(a for a in args if not a.startswith('https://'))} failed: {reason[0]}")
+        print(f"git {args[0] if args[0] != '-q' else args[1]} failed ({reason[0]}); retrying in {wait}s", file=sys.stderr)
+        time.sleep(wait)
 
 
 def outbox_branch(run_id: str) -> str:
@@ -80,7 +100,7 @@ def clear_inbox(run_id: str) -> None:
     try:
         _git("push", "-q", f"--force-with-lease=refs/heads/inbox:{sha_file.read_text().strip()}",
              _repo_url(), ":refs/heads/inbox")
-    except subprocess.CalledProcessError:
+    except GitError:
         pass  # already gone, or a newer batch is waiting: leave it
 
 
