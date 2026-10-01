@@ -2,7 +2,8 @@
 
 This is deliberately dumb code: it navigates to x.com/home, scrolls, and reads
 the DOM plus the API responses the page itself loads. The only things it ever clicks
-are the "For you" tab and X's own "Retry" button when the feed stops loading; the
+are the "For you" and "Following" tabs, Following's Popular/Recent menu (to choose
+Recent), and X's own "Retry" button when the feed stops loading; the
 only other pages it opens are threads' own post pages, to read the rest of a thread.
 No model ever sees page content while this browser is open.
 """
@@ -126,6 +127,25 @@ def _select_tab(page: Page, name: str) -> None:
         pass
 
 
+def _sort_following_recent(page: Page, stats: dict) -> None:
+    """X's Following tab defaults to "Popular" (ranked, not chronological), and the
+    choice is stored per browser. Re-clicking the selected tab opens a Popular/Recent
+    menu; pick Recent so "caught up" (a run of already-seen posts) means something."""
+    tab = page.get_by_role("tab").filter(has_text=re.compile(r"^\s*Following\s*$")).first
+    tab.click()
+    time.sleep(random.uniform(1, 2))
+    recent = page.get_by_role("menuitem").filter(has_text=re.compile(r"^\s*Recent"))
+    if recent.count():
+        recent.first.click()
+        stats["following_sort"] = "recent"
+        time.sleep(random.uniform(2, 3))
+        page.mouse.wheel(0, -5000)
+        time.sleep(1)
+    else:
+        page.keyboard.press("Escape")
+        stats["following_sort"] = "unknown"
+
+
 def _scan(page: Page, source: str, posts: dict, counted: set, seen: dict, stats: dict,
           want_new: int, stop_after_seen: int) -> str:
     """Scroll the current tab, adding up to `want_new` unseen posts (tagged with
@@ -206,6 +226,7 @@ def fetch(max_posts: int = 60, max_following: int = 100, min_for_you: int = 15,
             counted: set[str] = set()
             if max_following > 0:
                 _select_tab(page, "Following")
+                _sort_following_recent(page, stats)
                 stats["following_stop"] = _scan(page, "following", posts, counted, seen, stats,
                                                 max_following, stop_after_seen)
             stats["following"] = len(posts)
