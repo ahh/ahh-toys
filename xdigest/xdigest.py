@@ -180,7 +180,7 @@ def cmd_push(args, run_id: str | None = None, posts: list[dict] | None = None) -
     fetch.mark_seen(posts)
     print(f"pushed inbox {run_id} ({len(posts)} posts); bar: "
           + (f"above {bar['score']} + {bar['fraction']:.0%} at it, ~{bar['expected_per_day']}/day "
-             f"from {bar['window_posts']} posts over {bar['window_days']}d" if bar else "per-batch fallback"))
+             f"(scores from {bar['window_posts']} posts, ~{bar['eligible_per_day']} eligible/day)" if bar else "per-batch fallback"))
 
 
 def deliver(run_id: str) -> None:

@@ -235,10 +235,11 @@ human check, you'll get a message saying so; run `login` again.
   you: it goes to the routine with each batch (through your private data repo) and is
   never committed here. Start from the default: `cp routine/SCORING.default.md
   ~/.config/xdigest/SCORING.md`. Without a copy, the default is used.
-- **How many:** picks aren't a fixed number per batch. Before each push, the Mac looks
-  at the last 3 days of scores and sets a bar that would have produced
-  `XDIGEST_PICKS_PER_DAY` (default 25) picks a day; every post at or above it is sent,
-  so good batches send more and quiet ones fewer. Scores have one decimal; exact ties
+- **How many:** picks aren't a fixed number per batch. Before each push, the Mac sets a
+  score bar: the score distribution comes from the last 3 days, the volume from the
+  last 3 runs, and the bar is where `XDIGEST_PICKS_PER_DAY` (default 25) of a day's
+  posts would clear it. Every post at or above it is sent, so good batches send more
+  and quiet ones fewer, and a change in batch size moves the bar right away. Scores have one decimal; exact ties
   at the bar are sent with the probability that hits the target (stable per post). The
   bar never drops below 5 (`selection.py`). With under half a day of history it falls
   back to the top 1/12 of each batch (`FRACTION` in `routine/pick.py`).

@@ -11,11 +11,13 @@ probability `fraction` (decided by a hash of the post id, so it's stable).
 
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import store
 
 WINDOW_DAYS = 3
 MIN_HISTORY_DAYS = 0.5  # below this, fall back to pick.py's per-batch rule
+RECENT_RUNS = 3         # volume is estimated from this many latest runs
 FLOOR = 5               # never pick below this, however quiet the window
 
 
@@ -30,14 +32,29 @@ def _run_time(run_id: str) -> datetime | None:
         return None
 
 
+def _runs_per_day() -> int:
+    """How many times a day the schedule runs (from the installed launchd job), else 5."""
+    try:
+        import plistlib
+        plist = plistlib.loads((Path.home() / "Library/LaunchAgents/com.xdigest.daily.plist").read_bytes())
+        times = plist.get("StartCalendarInterval")
+        return len(times) if isinstance(times, list) else 1
+    except Exception:
+        return 5
+
+
 def threshold(now: datetime | None = None) -> dict | None:
-    """{"score", "fraction", "window_days", "window_posts", "expected_per_day"}, or None
-    when there isn't enough history yet."""
+    """{"score", "fraction", ...}, or None when there isn't enough history yet.
+
+    The score distribution comes from the last WINDOW_DAYS of scored posts; the volume
+    (eligible posts per day) from the most recent runs, so a change in batch size (e.g.
+    the Following tab getting busier) moves the bar right away instead of over days."""
     if not store.SCORE_LOG.exists():
         return None
     now = now or datetime.now(timezone.utc)
     start = now - timedelta(days=WINDOW_DAYS)
     scores, oldest = [], None
+    per_run: dict[str, int] = {}
     for r in store.read_jsonl(store.SCORE_LOG):
         t = _run_time(r.get("run"))
         if not t or t < start:
@@ -46,28 +63,28 @@ def threshold(now: datetime | None = None) -> dict | None:
         s = r.get("scoring") or {}
         if not s.get("rejected") and not s.get("error"):
             scores.append(float(s.get("score", 0)))
-    if oldest is None:
+            per_run[r["run"]] = per_run.get(r["run"], 0) + 1
+    if oldest is None or (now - oldest).total_seconds() / 86400 < MIN_HISTORY_DAYS or not scores:
         return None
-    days = (now - oldest).total_seconds() / 86400
-    if days < MIN_HISTORY_DAYS:
-        return None
-    want = picks_per_day() * days  # picks the window should have produced
+
+    recent = [per_run[k] for k in sorted(per_run)[-RECENT_RUNS:]]
+    eligible_per_day = sum(recent) / len(recent) * _runs_per_day()
+    share = min(1.0, picks_per_day() / eligible_per_day)  # fraction of eligible posts to pick
+    want = share * len(scores)
 
     # Walk down from the top: the bar is the score where the cumulative count crosses `want`.
-    distinct = sorted(set(scores), reverse=True)
     above = 0
-    for s in distinct:
+    for s in sorted(set(scores), reverse=True):
         at = sum(1 for x in scores if x == s)
         if above + at >= want:
-            frac = (want - above) / at
-            bar = {"score": s, "fraction": round(frac, 3)}
+            bar = {"score": s, "fraction": round((want - above) / at, 3)}
             break
         above += at
     else:
-        bar = {"score": distinct[-1] if distinct else FLOOR, "fraction": 1.0}
+        bar = {"score": FLOOR, "fraction": 1.0}
     if bar["score"] < FLOOR:
         bar = {"score": FLOOR, "fraction": 1.0}
-    expected = (sum(1 for x in scores if x > bar["score"])
-                + bar["fraction"] * sum(1 for x in scores if x == bar["score"])) / days
-    return {**bar, "window_days": round(days, 2), "window_posts": len(scores),
-            "expected_per_day": round(expected, 1)}
+    share_at_bar = (sum(1 for x in scores if x > bar["score"])
+                    + bar["fraction"] * sum(1 for x in scores if x == bar["score"])) / len(scores)
+    return {**bar, "window_posts": len(scores), "eligible_per_day": round(eligible_per_day),
+            "expected_per_day": round(share_at_bar * eligible_per_day, 1)}
