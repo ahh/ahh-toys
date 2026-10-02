@@ -238,13 +238,20 @@ def cmd_deliver(args) -> None:
         print("no scored runs waiting")
 
 
+def _stamp(label: str) -> None:
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {label}", flush=True)
+
+
 def cmd_run(args) -> None:
+    _stamp("run start")
     try:
         cmd_deliver(args)  # anything the routine finished after a previous run gave up waiting
+        _stamp("fetch start")
         run_id, posts = cmd_fetch(args)
         if not posts:
             notify.send("📭 X digest: no new posts in For You today.")
             return
+        _stamp("push start")
         cmd_push(args, run_id, posts)
         mailbox.fire_routine(run_id)
 
@@ -255,6 +262,7 @@ def cmd_run(args) -> None:
                             "It'll be delivered on the next run if it shows up.")
                 sys.exit(4)
             time.sleep(120)
+        _stamp("scored; delivering")
         deliver(run_id)
     except fetch.LoggedOut:
         notify.send("🔑 X digest: logged out of X. Run `uv run xdigest.py login` in the xdigest folder.")

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import store
 
-WINDOW_DAYS = 3
+WINDOW_DAYS = 1.5  # short enough to adapt within a day or so when the feed mix changes
 MIN_HISTORY_DAYS = 0.5  # below this, fall back to pick.py's per-batch rule
 RECENT_RUNS = 3         # volume is estimated from this many latest runs
 FLOOR = 5               # never pick below this, however quiet the window

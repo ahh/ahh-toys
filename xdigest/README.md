@@ -236,7 +236,7 @@ human check, you'll get a message saying so; run `login` again.
   never committed here. Start from the default: `cp routine/SCORING.default.md
   ~/.config/xdigest/SCORING.md`. Without a copy, the default is used.
 - **How many:** picks aren't a fixed number per batch. Before each push, the Mac sets a
-  score bar: the score distribution comes from the last 3 days, the volume from the
+  score bar: the score distribution comes from the last 1.5 days, the volume from the
   last 3 runs, and the bar is where `XDIGEST_PICKS_PER_DAY` (default 25) of a day's
   posts would clear it. Every post at or above it is sent, so good batches send more
   and quiet ones fewer, and a change in batch size moves the bar right away. Scores have one decimal; exact ties
