@@ -1,6 +1,7 @@
 """X For You digest: fetch on this Mac -> score in a Claude routine -> email, Telegram, or Signal.
 
     uv run xdigest.py check          # which setup steps are done (no secrets printed)
+    uv run xdigest.py health         # problems in the log since the last health check
     uv run xdigest.py scores --author someone   # how past posts were scored
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)
@@ -16,6 +17,7 @@ import argparse
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -147,6 +149,47 @@ def cmd_scores(args) -> None:
             print("      " + " ".join((r.get("text") or "").split())[:300])
         print(f"      {r.get('url', '')}")
     print(f"{len(rows)} post(s)")
+
+
+HEALTH_MARK = store.DATA_DIR / "health_offset"
+PROBLEM_PATTERNS = [
+    (re.compile(r"^\S*Error\b.*|^\w+\.\w*Error: .*|Traceback"), "error"),
+    (re.compile(r"retrying in"), "retry"),
+    (re.compile(r"lid closed: waiting"), "lid"),
+    (re.compile(r"card failed|gif failed|email send failed|routine fire failed"), "delivery"),
+    (re.compile(r"'extras_errors'"), "extras"),
+    (re.compile(r"'stall': \{"), "stall"),
+]
+
+
+def cmd_health(args) -> None:
+    """Summarize the job log since the last health check: runs, deliveries, problems.
+    Prints one line starting with OK or PROBLEM, then details for problems."""
+    log = store.DATA_DIR / "launchd.log"
+    if not log.exists():
+        print("PROBLEM: no job log yet"); return
+    text = log.read_text(errors="replace")
+    start = int(HEALTH_MARK.read_text()) if HEALTH_MARK.exists() and not args.all else 0
+    new = text[start:] if start <= len(text) else text
+    lines = new.splitlines()
+    runs = sum("] run start" in l for l in lines)
+    delivered = [l for l in lines if l.startswith("delivered ")]
+    problems = []
+    for l in lines:
+        for pat, kind in PROBLEM_PATTERNS:
+            if pat.search(l) and not l.startswith("  "):
+                problems.append(f"[{kind}] {l.strip()[:300]}")
+                break
+    last_start = next((l for l in reversed(text.splitlines()) if "] run start" in l), "")
+    summary = (f"{runs} run(s) started, {len(delivered)} delivered"
+               + (f"; last: {delivered[-1][:120]}" if delivered else "")
+               + (f"; latest run start {last_start[1:20]}" if last_start else ""))
+    serious = [p for p in problems if not p.startswith(("[retry]", "[lid]"))]
+    print(("PROBLEM: " if serious else "OK: ") + summary)
+    for p in problems:
+        print("  " + p)
+    if not args.dry_run:
+        HEALTH_MARK.write_text(str(len(text)))
 
 
 def cmd_chat_id(args) -> None:
@@ -352,6 +395,10 @@ def main() -> None:
     for name, fn in [("check", cmd_check), ("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
                      ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
+    p = sub.add_parser("health", help="problems in the job log since the last health check")
+    p.add_argument("--all", action="store_true", help="scan the whole log, not just what's new")
+    p.add_argument("--dry-run", action="store_true", help="don't advance the 'last checked' mark")
+    p.set_defaults(fn=cmd_health)
     p = sub.add_parser("scores", help="search how past posts were scored")
     p.add_argument("--author", action="append", default=[], help="handle (repeatable), e.g. --author dril")
     p.add_argument("--min", type=int, help="only posts that scored at least this")
