@@ -45,6 +45,8 @@ body { background: transparent; font: 16px/1.4 -apple-system, BlinkMacSystemFont
 .n { color: #536471; font-size: 13px; margin-bottom: 2px; }
 """
 
+MAX_CARD_VIDEOS = 2  # animate at most this many videos per card; the rest stay thumbnails
+
 PALETTE = ["#1d9bf0", "#f91880", "#00ba7c", "#7856ff", "#ff7a00", "#e0245e"]
 
 
@@ -102,7 +104,7 @@ def _media(part: dict, slots: list[dict]) -> str:
             continue
         attr, play = "", ""
         if "video_thumb" in url:
-            if videos:
+            if videos and len(slots) < MAX_CARD_VIDEOS:
                 attr = f' data-video="{len(slots)}"'
                 slots.append({"url": videos.pop(0), "fit": "cover"})
             else:

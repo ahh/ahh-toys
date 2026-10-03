@@ -36,12 +36,16 @@ def _post(payload: dict) -> dict:
         "Content-Type": "application/json",
         "User-Agent": "xdigest",
     })
-    for wait in (30, 90, None):  # ride out brief outages; HTTP errors (4xx) aren't retried
+    for wait in (30, 90, None):  # ride out brief outages and server-side hiccups
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 return json.load(resp)
-        except urllib.error.HTTPError:
-            raise
+        except urllib.error.HTTPError as e:
+            # Timeouts, rate limits and server errors are worth another try; other 4xx aren't.
+            if e.code not in (408, 429) and e.code < 500 or wait is None:
+                raise
+            print(f"email send got HTTP {e.code}; retrying in {wait}s", file=sys.stderr)
+            time.sleep(wait)
         except OSError as e:
             if wait is None:
                 raise
@@ -101,6 +105,20 @@ def _who(author: dict, small: bool = False) -> str:
             f'</tr></table>')
 
 
+# Resend rejects emails over 40MB (after base64). Keep each email well under: at most a
+# few GIFs and ~20MB; further videos show as a thumbnail linking to X.
+MAX_GIFS_PER_EMAIL = 3
+MAX_ATTACHMENT_CHARS = 20_000_000
+
+
+TYPICAL_GIF_CHARS = 4_000_000  # don't bother converting another video without this much room
+
+
+def _gif_budget_left(attachments: list[dict]) -> bool:
+    return (len(attachments) < MAX_GIFS_PER_EMAIL
+            and sum(len(a["content"]) for a in attachments) < MAX_ATTACHMENT_CHARS - TYPICAL_GIF_CHARS)
+
+
 def _media(part: dict, post_url: str, tmp: Path, attachments: list[dict]) -> str:
     """Photos hotlinked from X; each video as an inline muted GIF linking to the post."""
     videos = list(part.get("videos") or [])
@@ -108,16 +126,18 @@ def _media(part: dict, post_url: str, tmp: Path, attachments: list[dict]) -> str
     for url in render._images(part)[:4]:
         is_video = "video_thumb" in url
         width = None
-        if is_video and videos:
+        if is_video and videos and _gif_budget_left(attachments):
             cid = f"vid{len(attachments)}"
             try:
                 gif = render.video_gif(videos.pop(0), tmp / f"{cid}.gif")
-                attachments.append({"filename": f"{cid}.gif", "content_id": cid,
-                                    "content": base64.b64encode(gif.read_bytes()).decode()})
+                data = base64.b64encode(gif.read_bytes()).decode()
+                if len(data) + sum(len(a["content"]) for a in attachments) > MAX_ATTACHMENT_CHARS:
+                    raise ValueError("over this email's GIF budget")
+                attachments.append({"filename": f"{cid}.gif", "content_id": cid, "content": data})
                 src = f"cid:{cid}"
                 width = _gif_width(gif)
             except Exception as e:
-                print(f"gif failed for {post_url}: {e}", file=sys.stderr)
+                print(f"gif skipped for {post_url}: {e}", file=sys.stderr)
                 src = url.replace("name=small", "name=large")
         else:
             src = url.replace("name=small", "name=large")
