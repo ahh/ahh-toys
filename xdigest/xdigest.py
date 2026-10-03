@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
 import fetch
 import mailbox
 import notify
@@ -153,8 +155,16 @@ def cmd_chat_id(args) -> None:
 
 
 def cmd_fetch(args) -> tuple[str, list[dict]]:
-    posts, stats = fetch.fetch(max_posts=args.max_posts, max_following=args.max_following,
-                               min_for_you=args.min_for_you, headless=args.headless)
+    for attempt in (1, 2):
+        try:
+            posts, stats = fetch.fetch(max_posts=args.max_posts, max_following=args.max_following,
+                                       min_for_you=args.min_for_you, headless=args.headless)
+            break
+        except PlaywrightTimeout as e:  # X's page didn't load or render in time
+            if attempt == 2:
+                raise
+            print(f"fetch timed out ({str(e).splitlines()[0]}); retrying in 90s", file=sys.stderr)
+            time.sleep(90)
     stats["images_saved"] = fetch.download_images(posts)
     run_dir = store.new_run_dir()
     store.write_jsonl(run_dir / "posts.jsonl", posts)
@@ -242,8 +252,27 @@ def _stamp(label: str) -> None:
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {label}", flush=True)
 
 
+def _lid_closed() -> bool:
+    """True if this is a laptop with its lid shut. With the lid closed the Mac only
+    half-wakes ("dark wake") for seconds at a time, which stalls or breaks a run."""
+    out = subprocess.run(["ioreg", "-r", "-k", "AppleClamshellState", "-d", "4"],
+                         capture_output=True, text=True).stdout
+    return '"AppleClamshellState" = Yes' in out
+
+
+def _wait_for_lid(max_hours: float = 12) -> None:
+    if not _lid_closed():
+        return
+    _stamp("lid closed: waiting for it to open")
+    deadline = time.time() + max_hours * 3600
+    while _lid_closed() and time.time() < deadline:
+        time.sleep(60)  # the process is frozen while the Mac sleeps; this resumes on wake
+    _stamp("lid open: starting")
+
+
 def cmd_run(args) -> None:
     _stamp("run start")
+    _wait_for_lid()
     try:
         cmd_deliver(args)  # anything the routine finished after a previous run gave up waiting
         _stamp("fetch start")
@@ -292,7 +321,8 @@ def cmd_install_schedule(args) -> None:
     SCHEDULE_PLIST.parent.mkdir(parents=True, exist_ok=True)
     SCHEDULE_PLIST.write_bytes(plistlib.dumps({
         "Label": SCHEDULE_LABEL,
-        "ProgramArguments": [uv, "run", "--directory", str(Path(__file__).resolve().parent),
+        # caffeinate keeps the Mac from idle-sleeping mid-run (and on AC, from system sleep).
+        "ProgramArguments": ["/usr/bin/caffeinate", "-i", "-s", uv, "run", "--directory", str(Path(__file__).resolve().parent),
                              "xdigest.py", "run", "--headless", "--max-posts", str(args.max_posts),
                              "--wait-hours", str(args.wait_hours)],
         "EnvironmentVariables": {"PATH": path, "PYTHONUNBUFFERED": "1"},

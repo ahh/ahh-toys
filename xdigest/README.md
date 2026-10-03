@@ -226,6 +226,11 @@ picks. Change it with `--at 08:00,12:00,18:00` and `--wait-hours` (keep the wait
 than the gap between runs); `run` also takes `--max-posts`, `--max-following` and
 `--min-for-you`. For email with your own domain, set
 `EMAIL_SPREAD_HOURS` to the gap between runs (3 by default) for a continuous trickle.
+**Laptops:** with the lid closed a Mac only half-wakes ("dark wake") for seconds at a
+time, which stalls or breaks a run, so a run that starts with the lid shut waits until
+it's opened (up to 12 hours) and then goes. Runs are wrapped in `caffeinate` so the Mac
+doesn't doze off mid-run. To keep it running with the lid closed you'd need a tool like
+Amphetamine, or an always-on machine.
 Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
 human check, you'll get a message saying so; run `login` again.
 
