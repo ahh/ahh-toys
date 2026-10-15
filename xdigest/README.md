@@ -234,6 +234,20 @@ Amphetamine, or an always-on machine.
 Logs: `~/.local/share/xdigest/launchd.log`. If X logs you out or asks for a
 human check, you'll get a message saying so; run `login` again.
 
+## Following accounts without opening X
+
+```
+uv run xdigest.py follow quantian1                       # or @handle, a profile link,
+uv run xdigest.py follow https://x.com/someone/status/1  # or a post link (follows its author)
+uv run xdigest.py unfollow someone
+```
+
+Uses the same dedicated, logged-in Chrome profile, headless. It only ever presses the
+named profile's own Follow button (never the "Who to follow" suggestions) and checks
+that the button changed. These are the only commands that change your account, and
+only you run them: the scheduled job, the fetcher and the scoring routine never do, so
+nothing in a post can make you follow anyone.
+
 ## Tuning
 
 - **Taste:** your rubric is `~/.config/xdigest/SCORING.md`, plain English, private to

@@ -4,6 +4,8 @@
     uv run xdigest.py health         # problems in the log since the last health check
     uv run xdigest.py scores --author someone   # how past posts were scored
     uv run xdigest.py login          # one-time: sign in to X in a dedicated Chrome profile
+    uv run xdigest.py follow <handle|profile link|post link> ...   # (un)follow without opening X
+    uv run xdigest.py unfollow <handle|profile link|post link> ...
     uv run xdigest.py chat-id        # find your Telegram chat id (message the bot first)
     uv run xdigest.py fetch          # scroll For You, save posts + images locally (no push)
     uv run xdigest.py push           # push the latest local run to the inbox branch
@@ -190,6 +192,19 @@ def cmd_health(args) -> None:
         print("  " + p)
     if not args.dry_run:
         HEALTH_MARK.write_text(str(len(text)))
+
+
+def cmd_follow(args) -> None:
+    import account
+    for target in args.targets:
+        try:
+            print(account.set_follow(target, follow=args.fn is cmd_follow))
+        except (ValueError, fetch.LoggedOut, fetch.Challenged) as e:
+            print(f"{target}: {type(e).__name__}: {e}")
+
+
+def cmd_unfollow(args) -> None:
+    cmd_follow(args)
 
 
 def cmd_chat_id(args) -> None:
@@ -395,6 +410,10 @@ def main() -> None:
     for name, fn in [("check", cmd_check), ("login", cmd_login), ("chat-id", cmd_chat_id), ("push", cmd_push), ("deliver", cmd_deliver),
                      ("uninstall-schedule", cmd_uninstall_schedule)]:
         sub.add_parser(name).set_defaults(fn=fn)
+    for name, fn, verb in (("follow", cmd_follow, "follow"), ("unfollow", cmd_unfollow, "unfollow")):
+        p = sub.add_parser(name, help=f"{verb} accounts from the dedicated X profile")
+        p.add_argument("targets", nargs="+", help="handle, @handle, profile link, or post link (its author)")
+        p.set_defaults(fn=fn)
     p = sub.add_parser("health", help="problems in the job log since the last health check")
     p.add_argument("--all", action="store_true", help="scan the whole log, not just what's new")
     p.add_argument("--dry-run", action="store_true", help="don't advance the 'last checked' mark")
