@@ -57,10 +57,15 @@ def _git(*args: str, cwd: Path | None = None) -> str:
         proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
         if proc.returncode == 0:
             return proc.stdout
-        reason = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or ["no output"]
+        # Keep git's whole explanation: the last line ("failed to push some refs") rarely
+        # says why; the lines before it do.
+        lines = [l.strip() for l in (proc.stderr or proc.stdout).strip().splitlines() if l.strip()]
+        reason = " | ".join(lines[-4:]) or "no output"
+        if "remote ref does not exist" in reason:  # retrying can't help
+            wait = None
         if wait is None:
-            raise GitError(f"git {' '.join(a for a in args if not a.startswith('https://'))} failed: {reason[0]}")
-        print(f"git {args[0] if args[0] != '-q' else args[1]} failed ({reason[0]}); retrying in {wait}s", file=sys.stderr)
+            raise GitError(f"git {' '.join(a for a in args if not a.startswith('https://'))} failed: {reason}")
+        print(f"git {args[0] if args[0] != '-q' else args[1]} failed ({reason}); retrying in {wait}s", file=sys.stderr)
         time.sleep(wait)
 
 
@@ -151,5 +156,16 @@ def read_outbox(run_id: str) -> dict:
         }
 
 
+def _branch_exists(name: str) -> bool:
+    return bool(_git("ls-remote", _repo_url(), f"refs/heads/{name}").strip())
+
+
 def delete_outbox(run_id: str) -> None:
-    _git("push", "-q", _repo_url(), "--delete", outbox_branch(run_id))
+    """Delete the run's outbox branch. Success means it's gone afterwards: a delete can
+    land on GitHub even when git reports an error, and a retry then fails on a branch
+    that no longer exists."""
+    try:
+        _git("push", "-q", _repo_url(), "--delete", outbox_branch(run_id))
+    except GitError:
+        if _branch_exists(outbox_branch(run_id)):
+            raise
