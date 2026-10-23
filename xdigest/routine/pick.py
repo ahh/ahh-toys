@@ -89,6 +89,14 @@ def describe(post: dict, run_id: str = "") -> str:
             lines.append(f"Shown because: {ctx}")
     if post.get("is_reply"):
         lines.append("This post is a reply.")
+    context = post.get("reply_to") or []
+    if context:
+        lines.append("This post is a reply. For context, here is what it replies to (score the reply, "
+                     "using this only to understand it):")
+        for c in context:
+            ca = c.get("author") or {}
+            lines.append(f"<in_reply_to author=\"{ca.get('name', '')} (@{ca.get('handle', '')})\">\n"
+                         f"{c.get('text') or '(no text)'}\n</in_reply_to>")
     lines.append("<post_text>\n" + (post["text"] or "(no text)") +
                  ("\n[text truncated]" if post.get("truncated") else "") + "\n</post_text>")
     if post.get("has_video"):

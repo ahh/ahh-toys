@@ -245,7 +245,8 @@ def fetch(max_posts: int = 60, max_following: int = 100, min_for_you: int = 15,
                         dump.write_text(raw)
                 xdata.collect(data, records)
             # Extras: if X's data format shifts, keep the run and skip them.
-            for step in (lambda: _enrich(posts, records), lambda: _expand_threads(ctx, posts, records, stats)):
+            for step in (lambda: _enrich(posts, records), lambda: _expand_threads(ctx, posts, records, stats),
+                         lambda: _attach_reply_context(ctx, posts, records, stats)):
                 try:
                     step()
                 except (LoggedOut, Challenged):
@@ -304,6 +305,9 @@ def _enrich(posts: dict[str, dict], records: dict[str, dict]) -> None:
         post["videos"] = rec.get("videos", [])
         post["author"].update({k: rec["author"][k] for k in about if rec.get("author")})
         post["community_note"] = rec.get("community_note")
+        post["reply_to_id"] = rec.get("reply_to_id")
+        post["reply_to_user_id"] = rec.get("reply_to_user_id")
+        post["user_id"] = rec.get("user_id")
         if rec.get("is_long") and rec.get("text"):
             post["text"], post["truncated"] = rec["text"], False
         q = post.get("quote")
@@ -380,6 +384,37 @@ def _expand_threads(ctx: BrowserContext, posts: dict[str, dict], records: dict[s
         stats["threads"] += 1
 
 
+MAX_REPLY_LOOKUPS = 10   # extra page loads per run to find what a reply was replying to
+REPLY_DEPTH = 2          # show at most this many posts above a reply
+
+
+def _brief(rec: dict) -> dict:
+    return {k: rec.get(k) for k in ("id", "url", "author", "text", "images", "videos")}
+
+
+def _attach_reply_context(ctx: BrowserContext, posts: dict[str, dict], records: dict[str, dict],
+                          stats: dict) -> None:
+    """For replies to someone else, attach the post(s) they reply to as post["reply_to"]
+    (oldest first). Uses records already captured when possible; otherwise opens the
+    reply's own page, which loads the conversation above it."""
+    stats["reply_context"] = stats["reply_lookups"] = 0
+    for pid, post in posts.items():
+        parent_id = post.get("reply_to_id")
+        if not parent_id or post.get("reply_to_user_id") == post.get("user_id"):
+            continue  # not a reply, or a self-reply (threads handle those)
+        if parent_id not in records and stats["reply_lookups"] < MAX_REPLY_LOOKUPS:
+            stats["reply_lookups"] += 1
+            time.sleep(random.uniform(3, 6))
+            records.update(_thread_records(ctx, pid))
+        chain, cur = [], parent_id
+        while cur and cur in records and len(chain) < REPLY_DEPTH:
+            chain.append(_brief(records[cur]))
+            cur = records[cur].get("reply_to_id")
+        if chain:
+            post["reply_to"] = list(reversed(chain))
+            stats["reply_context"] += 1
+
+
 def download_images(posts: list[dict], max_per_post: int = 12) -> int:
     """Save each post's images (own + quoted) under IMAGES_DIR; record filenames
     on the post as `image_files`. Plain HTTP, no browser session involved."""
@@ -387,7 +422,8 @@ def download_images(posts: list[dict], max_per_post: int = 12) -> int:
     saved = 0
     for post in posts:
         urls = post.get("images", []) + ((post.get("quote") or {}).get("images") or []) + \
-            [u for part in post.get("thread") or [] for u in part.get("images") or []]
+            [u for part in post.get("thread") or [] for u in part.get("images") or []] + \
+            [u for part in post.get("reply_to") or [] for u in part.get("images") or []]
         post["image_files"] = []
         for n, url in enumerate(urls[:max_per_post]):
             name = f"{post['id']}-{n}.jpg"

@@ -54,6 +54,11 @@ def _body(post: dict) -> _Text:
         t.add("\n\n")
     if xdata.reposter(post):
         t.add(f"🔁 {xdata.reposter(post)} reposted\n")
+    for c in post.get("reply_to") or []:
+        ca = c.get("author") or {}
+        t.add(f"↩ in reply to {ca.get('name', '')} @{ca.get('handle', '')}: "
+              + " ".join((c.get("text") or "").split())[:280], "ITALIC")
+        t.add("\n\n")
     a = post["author"]
     t.add(a["name"], "BOLD")
     t.add(f" @{a['handle']}")

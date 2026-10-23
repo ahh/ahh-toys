@@ -36,6 +36,11 @@ cuts them off at "Show more"). When a post is part of a thread by its author, it
 that thread's page in a second tab (up to 10 per run) and delivers the whole thread as
 one post, which is also how it gets scored.
 
+**Replies.** When a post replies to someone else, the fetcher attaches what it replies
+to (up to two posts up the conversation): from data it already has when possible,
+otherwise by opening the reply's page (up to 10 per run). The scorer sees it as
+context, and deliveries show it above the pick in a muted "↩ In reply to" box.
+
 **Security design.** The feed is written by strangers, so nothing that reads it can do
 anything else:
 

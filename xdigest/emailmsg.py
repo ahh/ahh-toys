@@ -173,6 +173,16 @@ def _body(post: dict, tmp: Path, attachments: list[dict]) -> str:
     if xdata.reposter(post):
         parts.append(f'<div style="font:13px {FONT};color:#536471;margin-bottom:6px">🔁 '
                      f'{html.escape(xdata.reposter(post))} reposted</div>')
+    context = post.get("reply_to") or []
+    if context:
+        ctx_parts = [f'<div style="font:12px {FONT};color:#536471;margin-bottom:6px">↩ In reply to</div>']
+        for c in context:
+            ctx_parts.append(_who(c["author"], small=True))
+            if c.get("text"):
+                ctx_parts.append(f'<div style="font:14px/1.4 {FONT};color:#536471">{_linkify(c["text"])}</div>')
+            ctx_parts.append(_media(c, c.get("url") or url, tmp, attachments))
+        parts.append(f'<div style="margin-bottom:14px;padding:8px 0 8px 12px;border-left:3px solid #cfd9de">'
+                     f'{"".join(ctx_parts)}</div>')
     if post.get("note"):
         parts.append(f'<div style="margin-bottom:12px;padding:10px 12px;background:#fff4e5;border-left:3px solid #f5a623;'
                      f'border-radius:6px;font:14px/1.4 {FONT};color:#5c3b00">🔍 {html.escape(post["note"])}</div>')
@@ -225,7 +235,9 @@ def _subject(post: dict) -> str:
 
 def _plain(post: dict) -> str:
     card = post.get("card") or {}
-    lines = ([f'🔍 {post["note"]}', ""] if post.get("note") else []) + \
+    context = [f'↩ in reply to {c["author"].get("name", "")} @{c["author"].get("handle", "")}: '
+               + " ".join((c.get("text") or "").split()) for c in post.get("reply_to") or []]
+    lines = ([f'🔍 {post["note"]}', ""] if post.get("note") else []) + ([*context, ""] if context else []) + \
         [f'{post["author"]["name"]} @{post["author"]["handle"]}', "", post.get("text") or ""]
     q = post.get("quote")
     if q:

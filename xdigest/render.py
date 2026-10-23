@@ -124,6 +124,15 @@ def card_html(post: dict) -> tuple[str, list[dict]]:
     ctx = (post.get("social_context") or "").strip()
     if ctx.endswith(" reposted"):
         body.append(f'<div class="n">🔁 {html.escape(ctx)}</div>')
+    reply_ctx = post.get("reply_to") or []
+    if reply_ctx:
+        inner = ['<div class="n">↩ In reply to</div>']
+        for c in reply_ctx:
+            inner.append(_who(c["author"]))
+            if c.get("text"):
+                inner.append(f'<div class="text" style="font-size:15px;color:#536471">{_linkify(c["text"])}</div>')
+            inner.append(_media(c, slots))
+        body.append(f'<div style="border-left:3px solid #cfd9de;padding-left:12px;margin-bottom:12px">{"".join(inner)}</div>')
     body.append(_who(post["author"]))
     if post.get("text"):
         body.append(f'<div class="text">{_linkify(post["text"])}</div>')
