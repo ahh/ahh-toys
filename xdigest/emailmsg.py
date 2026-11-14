@@ -105,6 +105,11 @@ def _who(author: dict, small: bool = False) -> str:
             f'</tr></table>')
 
 
+# Photos are linked at X's "medium" size (1200px): sharp at 2x in a 560px column, ~1/4 the
+# bytes of "large". Video GIFs are attached, so keep them small.
+GIF_BOX = 400  # px, longest side
+GIF_FPS = 8
+
 # Resend rejects emails over 40MB (after base64). Keep each email well under: at most a
 # few GIFs and ~20MB; further videos show as a thumbnail linking to X.
 MAX_GIFS_PER_EMAIL = 3
@@ -129,7 +134,7 @@ def _media(part: dict, post_url: str, tmp: Path, attachments: list[dict]) -> str
         if is_video and videos and _gif_budget_left(attachments):
             cid = f"vid{len(attachments)}"
             try:
-                gif = render.video_gif(videos.pop(0), tmp / f"{cid}.gif")
+                gif = render.video_gif(videos.pop(0), tmp / f"{cid}.gif", box=GIF_BOX, fps=GIF_FPS)
                 data = base64.b64encode(gif.read_bytes()).decode()
                 if len(data) + sum(len(a["content"]) for a in attachments) > MAX_ATTACHMENT_CHARS:
                     raise ValueError("over this email's GIF budget")
@@ -138,10 +143,10 @@ def _media(part: dict, post_url: str, tmp: Path, attachments: list[dict]) -> str
                 width = _gif_width(gif)
             except Exception as e:
                 print(f"gif skipped for {post_url}: {e}", file=sys.stderr)
-                src = url.replace("name=small", "name=large")
+                src = url.replace("name=small", "name=medium")
         else:
-            src = url.replace("name=small", "name=large")
-        # GIFs show at their own (<=480px) size so vertical videos aren't enormous.
+            src = url.replace("name=small", "name=medium")
+        # GIFs show at their own (<=GIF_BOX) size so vertical videos aren't enormous.
         size = (f'width="{width}" style="display:block;width:{width}px;max-width:100%;border-radius:12px"'
                 if width else 'width="100%" style="display:block;width:100%;max-width:560px;border-radius:12px"')
         img = f'<img src="{html.escape(src)}" alt="" {size}>'
